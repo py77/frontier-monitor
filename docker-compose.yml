@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: frontier
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:8765:8765"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/frontier
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./.env:/app/.env
+      - ./config:/config
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8765 --reload"
+
+volumes:
+  pgdata:

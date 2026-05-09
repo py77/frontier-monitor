@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "description": "Quarterly capex per hyperscaler in $M. Calendar quarters (not fiscal). Source = 8-K Ex991 / cash flow line 'Purchases of property and equipment' (or 'Additions to property and equipment' for MSFT). Pulled from C:\\Users\\longr\\Project\\equityreport\\_official_packs.",
+    "convention": "amounts are USD millions, gross capex (no netting of proceeds unless noted)",
+    "update_cadence": "after each earnings cycle (quarterly)"
+  },
+  "MSFT": [
+    {"period": "2025Q1", "capex_usd_m": 16745, "fiscal_label": "Q3 FY25", "source": "MSFT_8-K_Ex99-1_Q3FY26 prior-year column"},
+    {"period": "2025Q3", "capex_usd_m": 19394, "fiscal_label": "Q1 FY26", "note": "= H1 FY26 49270 - Q2 FY26 29876", "source": "MSFT_Q2FY26_Cash_Flows.md"},
+    {"period": "2025Q4", "capex_usd_m": 29876, "fiscal_label": "Q2 FY26", "source": "MSFT_Q2FY26_Cash_Flows.md"},
+    {"period": "2026Q1", "capex_usd_m": 30876, "fiscal_label": "Q3 FY26", "source": "MSFT_8-K_Ex99-1_Q3FY26_20260429.htm"}
+  ],
+  "GOOGL": [
+    {"period": "2025Q1", "capex_usd_m": 17197, "source": "GOOGL_8K_PR_Q1-2026 prior-year comparison"},
+    {"period": "2025Q2", "capex_usd_m": 22446, "source": "GOOGL_8K_PR_Q1-2026 TTM table"},
+    {"period": "2025Q3", "capex_usd_m": 23953, "source": "GOOGL_8K_PR_Q1-2026 TTM table"},
+    {"period": "2025Q4", "capex_usd_m": 27851, "source": "GOOGL_8K_PR_Q1-2026 TTM table"},
+    {"period": "2026Q1", "capex_usd_m": 35674, "source": "GOOGL_8K_PR_Q1-2026 cash flow statement"}
+  ],
+  "META": [
+    {"period": "2025Q1", "capex_usd_m": 12941, "source": "META Q1 2026 PR prior-year comparable"},
+    {"period": "2026Q1", "capex_usd_m": 18997, "source": "META_Q1-2026_Earnings_Press_Release_Ex991.htm",
+     "note": "excludes $843M principal payments on finance leases; META's reported 'capex incl. finance leases' = $19840M"}
+  ],
+  "AMZN": [
+    {"period": "2025Q1", "capex_usd_m": 25019, "source": "AMZN_8-K_Ex991_Q1-2026 prior-year column"},
+    {"period": "2026Q1", "capex_usd_m": 44203, "source": "AMZN_8-K_Ex991_Q1-2026_EarningsPR.htm cash flow statement"}
+  ]
+}

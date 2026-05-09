@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Invoke-RestMethod -Method GET http://localhost:8765/api/*)",
+      "Bash(Invoke-RestMethod -Method POST http://localhost:8765/api/*)",
+      "Bash(Invoke-RestMethod http://localhost:8765/api/*)",
+      "Bash(curl http://localhost:8765/api/*)",
+      "Bash(curl -s http://localhost:8765/api/*)",
+      "Bash(curl -X POST http://localhost:8765/api/*)",
+      "Bash(docker compose ps)",
+      "Bash(docker compose logs:*)",
+      "Bash(docker compose up -d)",
+      "Bash(docker compose down)"
+    ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
+  }
+}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title or 'Signal' }} — Frontier Monitor{% endblock %}
+{% block content %}
+<article class="signal-detail">
+  <p><a href="/">← back to scoreboard</a></p>
+  <h1>{{ item.title or "(untitled)" }}</h1>
+  <div class="meta">
+    <span class="source">{{ item.source_id }}</span>
+    {% if item.author %}<span class="author">{{ item.author }}</span>{% endif %}
+    {% if item.published_at %}<span class="date">{{ item.published_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>{% endif %}
+    {% if item.url %}<a href="{{ item.url }}" rel="noopener" target="_blank">source ↗</a>{% endif %}
+  </div>
+
+  {% if item.raw_text %}
+  <section class="raw">
+    <h2>Raw</h2>
+    <p>{{ item.raw_text[:2000] }}{% if item.raw_text|length > 2000 %} …{% endif %}</p>
+  </section>
+  {% endif %}
+
+  <section class="signals">
+    <h2>Signals ({{ signals|length }})</h2>
+    {% for s in signals %}
+    <div class="signal-card imp-{{ (s.payload.get('importance_0_5') or 0)|int }}">
+      <div class="head">
+        <span class="type">{{ s.signal_type }} ({{ s.analyst_version }})</span>
+        <span class="when">{{ s.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      </div>
+      {% if s.payload.get('tldr') %}<p class="tldr-line"><strong>TL;DR.</strong> {{ s.payload.tldr }}</p>{% endif %}
+      {% if s.payload.get('thesis') %}<p class="thesis"><strong>Thesis.</strong> {{ s.payload.thesis }}</p>{% endif %}
+      {% if s.payload.get('summary') %}<p class="summary">{{ s.payload.summary }}</p>{% endif %}
+      <dl class="kv">
+        <dt>importance</dt><dd>{{ s.payload.get('importance_0_5', '—') }}/5</dd>
+        {% if s.payload.get('market_relevance') %}
+        <dt>market_relevance</dt><dd>{{ s.payload.get('market_relevance') | join(', ') }}</dd>
+        {% endif %}
+        {% if s.payload.get('pillar_tags') %}
+        <dt>tags</dt><dd>{{ s.payload.get('pillar_tags') | join(', ') }}</dd>
+        {% endif %}
+        {% if s.payload.get('citations') %}
+        <dt>citations</dt><dd>{{ s.payload.get('citations') | join(' · ') }}</dd>
+        {% endif %}
+      </dl>
+    </div>
+    {% else %}
+    <p class="empty">no signals yet — run /refresh in Claude Code</p>
+    {% endfor %}
+  </section>
+</article>
+{% endblock %}

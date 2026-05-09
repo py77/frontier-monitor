@@ -1,0 +1,30 @@
+{
+  "_meta": {
+    "description": "Quarterly merchant AI-silicon revenue per supplier in $M. Calendar quarters mapped from each issuer's fiscal calendar (NVDA FY ends late Jan; AMD FY = calendar; AVGO FY ends early Nov — AVGO Q4 FY25 = Aug-Oct 2025 = calendar 2025Q3). Pulled from C:\\Users\\longr\\Project\\equityreport\\_official_packs\\{NVDA,AMD,AVGO}.",
+    "convention": "amounts are USD millions. NVDA = Data Center segment revenue (compute+networking). AMD = Data Center segment revenue (Instinct GPUs + EPYC server CPUs). AVGO = 'AI semiconductor revenue' as called out in earnings press releases (custom AI accelerators + AI networking silicon).",
+    "update_cadence": "after each issuer's earnings release (quarterly, staggered)",
+    "addresses_google_amzn_asic_question": "Google TPU and AWS Trainium revenue is not separately disclosed by GOOGL/AMZN — but AVGO designs custom silicon and AI networking for hyperscalers (TPU networking) and is the closest available proxy."
+  },
+  "NVDA": [
+    {"period": "2024Q1", "revenue_usd_m": 22563, "fiscal_label": "Q1 FY25", "note": "derived = H1 FY25 (48835) − Q2 FY25 (26272)", "source": "NVDA_10-Q_Q3-2025_20250827 segment revenue table"},
+    {"period": "2024Q2", "revenue_usd_m": 26272, "fiscal_label": "Q2 FY25", "source": "NVDA_10-Q_Q3-2025_20250827 prior-year column"},
+    {"period": "2024Q3", "revenue_usd_m": 30771, "fiscal_label": "Q3 FY25", "source": "NVDA_10-Q_Q4-2025_20251119 prior-year column"},
+    {"period": "2025Q1", "revenue_usd_m": 39112, "fiscal_label": "Q1 FY26", "note": "derived = H1 FY26 (80208) − Q2 FY26 (41096)", "source": "NVDA_10-Q_Q3-2025_20250827 segment revenue table"},
+    {"period": "2025Q2", "revenue_usd_m": 41096, "fiscal_label": "Q2 FY26", "source": "NVDA_10-Q_Q3-2025_20250827 segment revenue table"},
+    {"period": "2025Q3", "revenue_usd_m": 51215, "fiscal_label": "Q3 FY26", "source": "NVDA_10-Q_Q4-2025_20251119 segment revenue table"}
+  ],
+  "AMD": [
+    {"period": "2024Q3", "revenue_usd_m": 3549, "fiscal_label": "Q3 FY24", "source": "AMD_10-Q_Q3-2025_20251105 prior-year column (segment table)"},
+    {"period": "2025Q1", "revenue_usd_m": 3674, "fiscal_label": "Q1 FY25", "source": "AMD_8-K_Ex_q12026991 Y/Y comparison column"},
+    {"period": "2025Q2", "revenue_usd_m": 3240, "fiscal_label": "Q2 FY25", "note": "derived = 9M FY25 (11255) − Q1 (3674) − Q3 (4341)", "source": "AMD_10-Q_Q3-2025_20251105 segment table"},
+    {"period": "2025Q3", "revenue_usd_m": 4341, "fiscal_label": "Q3 FY25", "source": "AMD_10-Q_Q3-2025_20251105 segment table"},
+    {"period": "2025Q4", "revenue_usd_m": 5380, "fiscal_label": "Q4 FY25", "source": "AMD_8-K_Ex_q12026991 Q/Q comparison column"},
+    {"period": "2026Q1", "revenue_usd_m": 5775, "fiscal_label": "Q1 FY26", "source": "AMD_8-K_Ex_q12026991 segment summary"}
+  ],
+  "AVGO": [
+    {"period": "2024Q3", "revenue_usd_m": 4713, "fiscal_label": "Q4 FY24", "note": "derived from AVGO Q4 FY25 PR stating +74% YoY: 8200 / 1.74", "source": "AVGO_8-K_20251211_Ex99.1_Q4FY2025_PR YoY %"},
+    {"period": "2024Q4", "revenue_usd_m": 4078, "fiscal_label": "Q1 FY25", "note": "derived from AVGO Q1 FY26 PR stating +106% YoY: 8400 / 2.06", "source": "AVGO_8-K_20260304_Ex99.1_Q1FY2026_PR YoY %"},
+    {"period": "2025Q3", "revenue_usd_m": 8200, "fiscal_label": "Q4 FY25", "note": "AVGO Q4 FY25 covers Aug–Oct 2025 ≈ calendar 2025Q3", "source": "AVGO_8-K_20251211_Ex99.1_Q4FY2025_PR ('$8.2 billion ... custom AI accelerators and Ethernet AI switches')"},
+    {"period": "2025Q4", "revenue_usd_m": 8400, "fiscal_label": "Q1 FY26", "note": "AVGO Q1 FY26 covers Nov 2025–Jan 2026 ≈ calendar 2025Q4", "source": "AVGO_8-K_20260304_Ex99.1_Q1FY2026_PR ('AI revenue of $8.4 billion grew 106% year-over-year')"}
+  ]
+}

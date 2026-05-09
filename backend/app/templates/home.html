@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}AI Acceleration Index — Frontier Monitor{% endblock %}
+{% block content %}
+
+<section id="headline" class="headline">
+  <div class="loading">loading…</div>
+</section>
+
+<section id="dimensions" class="dim-grid"></section>
+
+<section class="two-col">
+  <div>
+    <h2>What changed — last 7 days</h2>
+    <ul id="what-changed" class="tldr-list"><li class="empty">loading…</li></ul>
+  </div>
+  <div>
+    <h2>Alerts</h2>
+    <ul id="alerts" class="alerts-list"><li class="empty">loading…</li></ul>
+  </div>
+</section>
+
+<script>
+// Sparkline data is daily-bucketed (one point per calendar day). Display modes:
+//   0 days        → dashed empty placeholder
+//   1-2 days      → scattered dots only (no line) + "Nd" caption — avoids fake-trend visual
+//   3+ days       → smooth line + endpoint dot (real trend signal)
+const MIN_DAYS_FOR_LINE = 3;
+
+function sparklineSVG(points, width=120, height=28) {
+  const w = width, h = height;
+  const padY = h * 0.15;
+  const usableH = h - padY * 2;
+
+  if (!points || points.length === 0) {
+    return `<svg width="${w}" height="${h}"><line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#30363d" stroke-dasharray="2 3"/></svg>`;
+  }
+
+  const values = points.map(p => p.value);
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = (max - min) || 1;
+  const xy = points.map((p, i) => {
+    const x = points.length > 1 ? (i / (points.length - 1)) * w : w / 2;
+    const y = padY + (1 - (p.value - min) / range) * usableH;
+    return { x, y };
+  });
+
+  if (points.length < MIN_DAYS_FOR_LINE) {
+    const dots = xy.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.2" fill="currentColor"/>`).join('');
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+      ${dots}
+      <text x="${w-2}" y="${h-3}" text-anchor="end" fill="#7a8390" font-size="9" font-family="ui-monospace,monospace">${points.length}d</text>
+    </svg>`;
+  }
+
+  const path = xy.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const last = xy[xy.length - 1];
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <polyline points="${path}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="2.2" fill="currentColor"/>
+  </svg>`;
+}
+
+function deltaArrow(d) {
+  if (d === null || d === undefined || isNaN(d)) return '';
+  if (Math.abs(d) < 0.5) return `<span class="delta flat">±0</span>`;
+  if (d > 0) return `<span class="delta up">▲ +${d.toFixed(1)}</span>`;
+  return `<span class="delta down">▼ ${d.toFixed(1)}</span>`;
+}
+
+function pillClass(score) {
+  if (score >= 75) return 'imp-5';
+  if (score >= 60) return 'imp-4';
+  if (score >= 45) return 'imp-3';
+  if (score >= 30) return 'imp-2';
+  return 'imp-1';
+}
+
+async function load() {
+  const res = await fetch('/api/scoreboard');
+  const s = await res.json();
+
+  // Headline
+  const verdictClass = s.verdict === 'ACCELERATING' ? 'verdict-accel'
+                     : s.verdict === 'STEADY' ? 'verdict-steady' : 'verdict-low';
+  document.getElementById('headline').innerHTML = `
+    <div class="head-left">
+      <div class="head-label">AI Acceleration Index</div>
+      <div class="head-question">Faster than consensus expects?</div>
+    </div>
+    <div class="head-mid">
+      <div class="head-num">${s.index.toFixed(1)}<span class="of100">/100</span></div>
+      ${deltaArrow(s.index_delta_wow)}
+    </div>
+    <div class="head-right">
+      <div class="${verdictClass}">${s.verdict}</div>
+      ${sparklineSVG(s.sparkline_index, 200, 48)}
+    </div>`;
+
+  // Dimensions
+  const grid = document.getElementById('dimensions');
+  grid.innerHTML = '';
+  const order = ['capability','recursive_ai','infrastructure','inference_cost','hyperscaler','enterprise_roi'];
+  for (const dim of order) {
+    const d = s.dimensions[dim];
+    if (!d) continue;
+    const card = document.createElement('div');
+    card.className = `dim-card ${pillClass(d.score)}`;
+    const heads = (d.headlines || []).map(h => `<div class="dim-head">${h}</div>`).join('');
+    card.innerHTML = `
+      <div class="dim-top">
+        <span class="dim-label">${d.label}</span>
+        <span class="dim-score">${d.score.toFixed(0)} ${deltaArrow(d.delta_wow)}</span>
+      </div>
+      <div class="dim-spark">${sparklineSVG(d.sparkline, 140, 32)}</div>
+      ${heads}`;
+    grid.appendChild(card);
+  }
+
+  // What changed
+  const wc = document.getElementById('what-changed');
+  if (s.what_changed && s.what_changed.length) {
+    wc.innerHTML = s.what_changed.map(item => `
+      <li class="tldr-row imp-${item.importance || 0}">
+        <span class="score">${item.importance || 0}/5</span>
+        <a class="tldr" href="/signal/${item.raw_item_id}">${item.tldr || item.title || ''}</a>
+        ${item.tickers && item.tickers.length ? `<span class="tickers">${item.tickers.join(' ')}</span>` : ''}
+      </li>`).join('');
+  } else {
+    wc.innerHTML = '<li class="empty">no scored signals in the last 7 days</li>';
+  }
+
+  // Alerts
+  const alertsRes = await fetch('/api/alerts?days=7');
+  const alerts = await alertsRes.json();
+  const al = document.getElementById('alerts');
+  if (alerts.length) {
+    al.innerHTML = alerts.slice(0, 8).map(a => `
+      <li class="alert-row sev-${a.severity}">
+        <span class="alert-icon">${a.severity === 'critical' ? '🔴' : a.severity === 'warn' ? '⚠' : 'ℹ'}</span>
+        <div class="alert-body">
+          <div class="alert-headline">${a.headline}</div>
+          <div class="alert-detail">${a.detail || ''}</div>
+        </div>
+      </li>`).join('');
+  } else {
+    al.innerHTML = '<li class="empty">no alerts (need score history for thresholds to trigger)</li>';
+  }
+}
+
+load();
+setInterval(load, 60000);  // refresh every minute
+</script>
+{% endblock %}

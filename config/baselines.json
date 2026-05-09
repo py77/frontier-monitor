@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "description": "Per-dimension raw-input baselines. Score = 50 at baseline, deviation drives the dial.",
+    "captured_at": "2026-05-09T08:15:01.064840+00:00",
+    "scoring_model": "Rebased deltas: ratio for level metrics, additive pp delta for rate metrics",
+    "verdict_thresholds_post_rebase": {
+      "ACCELERATING": "score >= 60 (faster cadence than today)",
+      "STEADY": "score 40-59 (around today's pace)",
+      "SLOWING": "score < 40 (slower than today)"
+    }
+  },
+  "capability": {
+    "signal_sum": 71.60000000000001
+  },
+  "recursive_ai": {
+    "signal_sum": 52.0
+  },
+  "infrastructure": {
+    "yoy_weighted_pct": 70.70178204737647,
+    "gw_30d": 10.0,
+    "signal_sum": 8.2
+  },
+  "inference_cost": {
+    "frontier_median_usd_mtok": 8.6
+  },
+  "hyperscaler": {
+    "capex_yoy_pct": 80.45395121137103,
+    "signal_sum": 36.0
+  },
+  "enterprise_roi": {
+    "roi_pct": 80.0,
+    "signal_sum": 17.0
+  }
+}

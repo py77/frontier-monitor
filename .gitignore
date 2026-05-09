@@ -1,0 +1,19 @@
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+*.log
+.DS_Store
+# transient artifacts from /refresh runs
+pending.json
+refresh_run.py
+scripts/headless_refresh.log
+.tmp_*.json
+.tmp_*.py
+
+# debug crash dumps
+*.stackdump

@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "description": "Periodic survey datapoints quantifying enterprise adoption + measurable ROI from AI agent deployments.",
+    "convention": "roi_pct = % of surveyed enterprise leaders reporting measurable ROI. sample_size = # respondents. Surveys vary in methodology and selection bias — `methodology_note` captures the key caveats (vendor-customer panel vs neutral, self-reported vs audited, etc.).",
+    "update_cadence": "as new primary surveys publish (Anthropic, BCG, McKinsey, IBM, Gartner, Stanford AI Index)",
+    "score_mapping": "score_engine._enterprise_roi_score reads `roi_pct` series and uses the latest value directly as the 0-100 score (with no scaling — ROI percentage IS the score). Sample size and survey count appear in headlines."
+  },
+  "surveys": [
+    {
+      "date": "2026-04-30",
+      "source": "Anthropic — How enterprises are building AI agents in 2026",
+      "url": "https://claude.com/blog/how-enterprises-are-building-ai-agents-in-2026",
+      "sample_size": 500,
+      "roi_pct": 80,
+      "methodology_note": "500+ technical leaders surveyed by Anthropic; 'measurable ROI' is self-reported by respondents. Vendor-customer panel skew likely."
+    }
+  ]
+}

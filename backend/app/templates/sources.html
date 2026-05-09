@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Sources — Frontier Monitor{% endblock %}
+{% block content %}
+<p><a href="/">← back to scoreboard</a></p>
+<h1>Sources</h1>
+<table class="sources">
+  <thead>
+    <tr><th>id</th><th>dimension</th><th>kind</th><th>enabled</th><th>last fetch</th><th>status</th></tr>
+  </thead>
+  <tbody>
+    {% for s in sources %}
+    <tr>
+      <td><code>{{ s.id }}</code></td>
+      <td>{{ s.pillar }}</td>
+      <td>{{ s.kind }}</td>
+      <td>{{ "yes" if s.enabled else "no" }}</td>
+      <td>{% if s.last_fetched_at %}{{ s.last_fetched_at.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}—{% endif %}</td>
+      <td>
+        {% if not s.enabled %}<span class="badge muted">off</span>
+        {% elif s.stale %}<span class="badge warn">stale &gt;48h</span>
+        {% elif s.last_fetched_at %}<span class="badge ok">fresh</span>
+        {% else %}<span class="badge muted">never</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
