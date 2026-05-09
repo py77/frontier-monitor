@@ -8,9 +8,14 @@
 # Re-run setup with .scheduled\register-task.ps1 to (re)create the scheduled task.
 
 $ErrorActionPreference = 'Continue'
-$projectDir = 'C:\Users\longr\Project\frontier'
+# Resolve paths relative to this script's location so the task works for any user/install path.
+$projectDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $logFile    = Join-Path $projectDir 'refresh.log'
-$claudeExe  = 'C:\Users\longr\.local\bin\claude.exe'
+$claudeExe  = if (Get-Command claude.exe -ErrorAction SilentlyContinue) {
+    (Get-Command claude.exe).Source
+} else {
+    Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+}
 
 Set-Location $projectDir
 

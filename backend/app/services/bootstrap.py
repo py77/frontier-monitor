@@ -52,7 +52,7 @@ DEFAULT_SOURCES: list[dict] = [
         "url": "https://openrouter.ai/api/v1/models",
         "enabled": True,
     },
-    # Hyperscaler $ — quarterly capex from equityreport 8-K cash flow statements
+    # Hyperscaler $ — quarterly capex curated from MSFT/GOOGL/META/AMZN 8-K cash flow statements
     {
         "id": "hyperscaler_capex",
         "pillar": "hyperscaler",

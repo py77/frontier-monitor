@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "description": "Quarterly merchant AI-silicon revenue per supplier in $M. Calendar quarters mapped from each issuer's fiscal calendar (NVDA FY ends late Jan; AMD FY = calendar; AVGO FY ends early Nov — AVGO Q4 FY25 = Aug-Oct 2025 = calendar 2025Q3). Pulled from C:\\Users\\longr\\Project\\equityreport\\_official_packs\\{NVDA,AMD,AVGO}.",
+    "description": "Quarterly merchant AI-silicon revenue per supplier in $M. Calendar quarters mapped from each issuer's fiscal calendar (NVDA FY ends late Jan; AMD FY = calendar; AVGO FY ends early Nov — AVGO Q4 FY25 = Aug-Oct 2025 = calendar 2025Q3). Manually transcribed from primary SEC filings (NVDA 10-Q segment tables, AMD 8-K Ex99.1, AVGO earnings PRs).",
     "convention": "amounts are USD millions. NVDA = Data Center segment revenue (compute+networking). AMD = Data Center segment revenue (Instinct GPUs + EPYC server CPUs). AVGO = 'AI semiconductor revenue' as called out in earnings press releases (custom AI accelerators + AI networking silicon).",
     "update_cadence": "after each issuer's earnings release (quarterly, staggered)",
     "addresses_google_amzn_asic_question": "Google TPU and AWS Trainium revenue is not separately disclosed by GOOGL/AMZN — but AVGO designs custom silicon and AI networking for hyperscalers (TPU networking) and is the closest available proxy."

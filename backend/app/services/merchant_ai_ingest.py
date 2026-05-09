@@ -1,9 +1,9 @@
 """Merchant AI-silicon revenue from a curated multi-ticker config file.
 
-Source-of-truth lives in `config/merchant_ai_silicon.json`, populated from
-the user's equityreport project (NVDA 10-Q segment tables; AMD 8-K Ex991
-segment summaries + 10-Q tables; AVGO earnings PRs that call out 'AI
-semiconductor revenue'). After each issuer's earnings release, append the
+Source-of-truth lives in `config/merchant_ai_silicon.json`, populated by hand
+from primary SEC filings: NVDA 10-Q segment revenue tables, AMD 8-K Ex99.1
+segment summaries + 10-Q tables, AVGO earnings press releases that call out
+'AI semiconductor revenue'. After each issuer's earnings release, append the
 new quarter to the relevant ticker section and re-run the ingest.
 
 Writes per-ticker quarterly revenue into the `timeseries` table — the

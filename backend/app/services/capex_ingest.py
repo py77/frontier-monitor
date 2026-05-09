@@ -1,7 +1,7 @@
 """Hyperscaler quarterly capex from a curated config file.
 
-Source-of-truth data lives in `config/hyperscaler_capex.json`, populated from
-the user's equityreport project (8-K Ex991 cash flow statements). After each
+Source-of-truth data lives in `config/hyperscaler_capex.json`, populated by
+hand from MSFT/GOOGL/META/AMZN 8-K Ex99.1 cash flow statements. After each
 earnings cycle, append a new quarter to that file and re-run the ingest.
 
 Writes per-ticker quarterly + per-ticker TTM + aggregate-total TTM into the

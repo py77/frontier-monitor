@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "description": "Quarterly capex per hyperscaler in $M. Calendar quarters (not fiscal). Source = 8-K Ex991 / cash flow line 'Purchases of property and equipment' (or 'Additions to property and equipment' for MSFT). Pulled from C:\\Users\\longr\\Project\\equityreport\\_official_packs.",
+    "description": "Quarterly capex per hyperscaler in $M. Calendar quarters (not fiscal). Source = 8-K Ex99.1 / cash flow line 'Purchases of property and equipment' (or 'Additions to property and equipment' for MSFT). Manually transcribed from primary SEC filings.",
     "convention": "amounts are USD millions, gross capex (no netting of proceeds unless noted)",
     "update_cadence": "after each earnings cycle (quarterly)"
   },

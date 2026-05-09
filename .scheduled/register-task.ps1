@@ -1,13 +1,13 @@
 # Register the "frontier-refresh" Windows Scheduled Task.
 # Re-run any time the schedule changes — Register-ScheduledTask -Force overwrites.
 #
-# Usage:
-#   pwsh -File C:\Users\longr\Project\frontier\.scheduled\register-task.ps1
+# Usage (from project root):
+#   pwsh -File .\.scheduled\register-task.ps1
 #
 # Default: daily at 14:00 local time. Override the trigger below to change.
 
-$projectDir = 'C:\Users\longr\Project\frontier'
-$scriptPath = Join-Path $projectDir '.scheduled\daily-refresh.ps1'
+$projectDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$scriptPath = Join-Path $PSScriptRoot 'daily-refresh.ps1'
 
 $action = New-ScheduledTaskAction `
     -Execute 'powershell.exe' `

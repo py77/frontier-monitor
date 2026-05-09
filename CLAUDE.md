@@ -55,23 +55,19 @@ Every dimension scores **deviation from a baseline snapshot**, not absolute leve
   - Enterprise ROI → 70% ROI-pp delta + 30% signal-sum ratio
 - **What this changes operationally**: when you re-snapshot, every dimension reads 50. Future readings drift up if the cadence accelerates (more signals per 30-day window, higher YoY growth, cheaper inference, higher ROI %), down if it slows. If you ever want absolute scoring back, restore the previous `score_engine.py` from git history.
 
-## Anti-fabrication rule (carry-over from `portfolio/CLAUDE.md`)
+## Anti-fabrication rule
 
 In any analyst output (signal payloads, daily memo, alerts), every numeric claim must trace to a citation from the same source — the original `raw_item.raw_text`/`title`/`url`, or a stored `timeseries` row. **No invented prices, percentages, or projections.**
 
 This is enforced by convention in the prompt (`refresh.md`, `memo.md`). Server-side validation (reject `summary`/`thesis` containing digits with empty `citations`) is a TODO worth shipping.
 
-## Stack — mirrors sibling projects
-
-This project mirrors `C:\Users\longr\Project\portfolio` and `C:\Users\longr\Project\macrosentiment` exactly:
+## Stack
 
 - **Runtime**: Docker Compose. Two services (`db: postgres:16-alpine`, `backend`). One named volume (`pgdata`). Port `127.0.0.1:8765` published.
 - **Backend**: Python 3.12 + FastAPI + async SQLAlchemy + asyncpg + Alembic. Non-root `app` user inside the container.
 - **Frontend**: Server-rendered Jinja + vanilla SVG sparklines. No React, no build step.
 - **Scheduling**: APScheduler in-process. `misfire_grace_time=None`, `coalesce=True` (sleep/restart-tolerant).
 - **HTTP scraping**: `httpx` for everything. Anthropic `/news`, `/engineering`, `/research` discovered via `anthropic.com/sitemap.xml` (lastmod = published_at proxy); `claude.com/blog` via listing-page href extraction. Per-article fetches pull og:title + og:description + article:published_time. All in `anthropic_html_ingest.py`. No third-party RSS mirror dependencies.
-
-When something needs a new data source, **first** check whether portfolio or macrosentiment already implements it.
 
 **Removed sources (2026-05-09)**: Longbridge equity prices (dead-coded — never read by any score), FRED macro (labor proxy too noisy for AI displacement), LMSYS Arena ELO (single-mirror via wulong.dev + multi-vendor data conflicted with Anthropic-focus), OpenAI/DeepMind RSS (mostly Academy tutorials and product PR), taobojlen RSS mirror (replaced by direct anthropic.com sitemap scraping). Trade: narrower coverage, zero authenticated SDKs, zero hobbyist mirrors. Capability now scores purely on Anthropic-narrative signal-tagging — no objective check on whether Anthropic still leads on benchmarks.
 
@@ -125,8 +121,6 @@ config/
 backend/alembic/versions/       0001 schema, 0002 FTS (rolled back), 0003 alerts
 ```
 
-Plan file: `C:\Users\longr\.claude\plans\fetch-the-article-from-radiant-abelson.md`.
-
 ## Operational commands
 
 ```powershell
@@ -172,6 +166,6 @@ Global rule: **NEVER read from folders containing "noedge" in the name**. Encode
 
 ## Known data gaps
 
-- **Quarterly capex**: ✅ now driven by `config/hyperscaler_capex.json`, curated from `C:\Users\longr\Project\equityreport\_official_packs\{MSFT,GOOGL,META,AMZN}\*\sec\*Ex991*.htm` 8-K cash flow statements. After each earnings cycle, append a new quarter object per ticker and re-run `POST /api/ingest/hyperscaler_capex`. The `score_engine._hyperscaler_score` reads `capex_total_quarterly` and computes YoY change vs the same calendar quarter prior year.
-- **Infrastructure (supply-side merchant AI silicon)**: ✅ now driven by `config/merchant_ai_silicon.json`, with three ticker sections curated from `C:\Users\longr\Project\equityreport\_official_packs`: **NVDA** Data Center segment (compute+networking) from `NVDA\sec\NVDA_10-Q_*.htm` segment tables, **AMD** Data Center segment (Instinct + EPYC) from `AMD\*\sec\AMD_8-K_Ex_*.htm` segment summaries, and **AVGO** "AI semiconductor revenue" from `AVGO\sec\AVGO_8-K_*_Ex99.1_*PR.htm` press releases. Each issuer reports on its own fiscal calendar (NVDA FY ends late Jan; AMD FY = calendar; AVGO FY ends early Nov, so AVGO Q4 FY25 ≈ calendar 2025Q3 by revenue period). The `score_engine._infrastructure_score` pulls per-ticker latest-quarter YoY from each series, dollar-weights them so NVDA's $51B base dominates without ignoring AMD/AVGO contributions, then blends 70% with GW/MW commitments parsed from infra-tagged signal `tldr`/`citations` (30%, max-of-fields per signal to avoid double-count when the same number quotes in both). After each issuer's earnings release, append a quarter to the relevant section and re-run `POST /api/ingest/merchant_ai_silicon`. **Why no GOOGL/AMZN section**: TPU and Trainium revenue isn't separately disclosed; AVGO is the closest available proxy because it designs Google's TPU networking and custom hyperscaler silicon.
+- **Quarterly capex**: ✅ driven by `config/hyperscaler_capex.json`, manually curated from MSFT/GOOGL/META/AMZN 8-K Ex99.1 cash flow statements (`Purchases of property and equipment` line). After each earnings cycle, append a new quarter object per ticker and re-run `POST /api/ingest/hyperscaler_capex`. The `score_engine._hyperscaler_score` reads `capex_total_quarterly` and computes YoY change vs the same calendar quarter prior year.
+- **Infrastructure (supply-side merchant AI silicon)**: ✅ driven by `config/merchant_ai_silicon.json`, with three ticker sections curated from primary SEC filings: **NVDA** Data Center segment from 10-Q segment revenue tables, **AMD** Data Center segment from 8-K Ex99.1 segment summaries, and **AVGO** "AI semiconductor revenue" from earnings press releases. Each issuer reports on its own fiscal calendar (NVDA FY ends late Jan; AMD FY = calendar; AVGO FY ends early Nov, so AVGO Q4 FY25 ≈ calendar 2025Q3 by revenue period). The `score_engine._infrastructure_score` pulls per-ticker latest-quarter YoY from each series, dollar-weights them so NVDA's revenue base dominates without ignoring AMD/AVGO contributions, then blends 70% with GW/MW commitments parsed from infra-tagged signal `tldr`/`citations` (30%, max-of-fields per signal to avoid double-count when the same number quotes in both). After each issuer's earnings release, append a quarter to the relevant section and re-run `POST /api/ingest/merchant_ai_silicon`. **Why no GOOGL/AMZN section**: TPU and Trainium revenue isn't separately disclosed; AVGO is the closest available proxy because it designs Google's TPU networking and custom hyperscaler silicon.
 - **Llama 3.1-405B and Gemini Pro 1.5** are no longer in OpenRouter (deprecated/renamed). Update `FRONTIER_MODELS` in `openrouter_ingest.py` when adding the next flagship.
