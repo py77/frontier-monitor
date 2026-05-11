@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Sources — Frontier Monitor{% endblock %}
 {% block content %}
-<p><a href="/">← back to scoreboard</a></p>
-<h1>Sources</h1>
+<div class="rule"><span>SOURCES</span><span class="rule-fill">────────────────────────────────────────────────────────────</span><span class="rule-right">{{ sources|length }} configured</span></div>
 <table class="sources">
   <thead>
     <tr><th>id</th><th>dimension</th><th>kind</th><th>enabled</th><th>last fetch</th><th>status</th></tr>

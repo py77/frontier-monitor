@@ -2,152 +2,438 @@
 {% block title %}AI Acceleration Index — Frontier Monitor{% endblock %}
 {% block content %}
 
+<section id="meta-bar" class="meta-bar">
+  <span class="kv"><span class="kv-label">FRONTIER MONITOR</span><span class="kv-value" id="meta-date">—</span></span>
+  <span class="kv"><span class="kv-label">·</span></span>
+  <span class="kv"><span class="kv-label">VERDICT</span><span class="kv-value" id="meta-verdict">—</span></span>
+  <span class="kv"><span class="kv-label">DIMS</span><span class="kv-value pos" id="meta-accel">—</span><span class="kv-value" style="color:var(--fg-caption); margin-left:2px;">/</span><span class="kv-value warn" id="meta-steady">—</span><span class="kv-value" style="color:var(--fg-caption); margin-left:2px;">/</span><span class="kv-value neg" id="meta-slow">—</span></span>
+  <span class="kv"><span class="kv-label">7D SIGNALS</span><span class="kv-value" id="meta-signals">—</span></span>
+  <span class="kv"><span class="kv-label">TRACKED</span><span class="kv-value" id="meta-days">—</span><span class="kv-label" style="margin-left:2px;">d</span></span>
+  <span class="spacer"></span>
+  <span class="kv" style="color:var(--fg-caption); font-size:var(--ts-micro);">tip: j/k cycle · enter open · esc close</span>
+  <span class="kv"><span class="kv-label">synced</span><span class="kv-value" id="meta-synced">—</span></span>
+  <button class="sync-btn" id="sync-btn" type="button">↻ refresh</button>
+</section>
+
 <section id="headline" class="headline">
   <div class="loading">loading…</div>
 </section>
 
-<section id="dimensions" class="dim-grid"></section>
+<div class="dim-shell">
+  <div class="dim-main">
+    <div class="rule"><span>DIMENSIONS</span><span class="rule-fill">────────────────────────────────────────────────────────────</span><span class="rule-right" id="dim-rule-right"></span></div>
+    <table class="dim-table" id="dim-table">
+      <thead>
+        <tr>
+          <th style="width: 22%;">Dimension</th>
+          <th class="num" style="width: 70px;">Score</th>
+          <th class="num" style="width: 80px;">Δ WoW</th>
+          <th style="width: 150px;">30d trend</th>
+          <th>Latest signals</th>
+        </tr>
+      </thead>
+      <tbody><tr><td colspan="5" class="loading">loading…</td></tr></tbody>
+    </table>
+  </div>
+  <aside class="dim-aside" id="dim-aside" hidden>
+    <div class="dim-aside-inner" id="dim-aside-inner"></div>
+  </aside>
+</div>
+
+<div>
+  <div class="rule"><span>30-DAY DIMENSION HEATMAP</span><span class="rule-fill">─────────────────────────────────</span><span class="rule-right"><span style="color:var(--pos)">■</span> accel <span style="color:var(--warn); margin-left:8px;">■</span> steady <span style="color:var(--neg); margin-left:8px;">■</span> slowing</span></div>
+  <div class="heatmap-wrap"><div id="heatmap" class="loading">loading…</div></div>
+</div>
 
 <section class="two-col">
   <div>
-    <h2>What changed — last 7 days</h2>
+    <div class="rule"><span>WHAT CHANGED · 7d</span><span class="rule-fill">────────────────────────────────────</span></div>
     <ul id="what-changed" class="tldr-list"><li class="empty">loading…</li></ul>
   </div>
   <div>
-    <h2>Alerts</h2>
+    <div class="rule"><span>ALERTS</span><span class="rule-fill">────────────────────────────────────</span></div>
     <ul id="alerts" class="alerts-list"><li class="empty">loading…</li></ul>
   </div>
 </section>
 
 <script>
-// Sparkline data is daily-bucketed (one point per calendar day). Display modes:
-//   0 days        → dashed empty placeholder
-//   1-2 days      → scattered dots only (no line) + "Nd" caption — avoids fake-trend visual
-//   3+ days       → smooth line + endpoint dot (real trend signal)
+/* Rebased scoring (since 2026-05-09):
+ *   baseline = 50.  ACCELERATING ≥ 60.  STEADY 40-59.  SLOWING < 40.
+ */
+
 const MIN_DAYS_FOR_LINE = 3;
+const DIM_ORDER = ['capability','recursive_ai','infrastructure','inference_cost','hyperscaler','enterprise_roi'];
+
+/* Tag → dimension key (mirror of score_engine.py::DIMENSION_TAGS — if you add a tag
+ * there, mirror it here so the sidebar's "tagged signals" view stays in sync). */
+const TAG_TO_DIM = {
+  capability: ['scaling','reasoning','agentic','agentic-research','ai-driven-rd','architectures','self-play','synthetic-data','interpretability','diffusion-lm','rl'],
+  recursive_ai: ['recursive-self-improvement','self-evolution','instrumental-convergence','alignment','safety'],
+  infrastructure: ['compute','hardware','data-center','power','gpu','infra'],
+  inference_cost: ['efficiency','moe','edge-inference','ternary','inference-cost','cost-reduction'],
+  hyperscaler: ['capex','hyperscaler','infrastructure-investment','earnings','developer-tools','lab-transparency'],
+  enterprise_roi: ['roi','adoption','enterprise-deployment','productivity'],
+};
+function tagsForDim(dim){ return new Set(TAG_TO_DIM[dim] || []); }
+function signalsForDim(items, dim){
+  const tags = tagsForDim(dim);
+  return (items || []).filter(it => (it.dimension_tags || []).some(t => tags.has(t)));
+}
 
 function sparklineSVG(points, width=120, height=28) {
   const w = width, h = height;
   const padY = h * 0.15;
   const usableH = h - padY * 2;
-
   if (!points || points.length === 0) {
-    return `<svg width="${w}" height="${h}"><line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#30363d" stroke-dasharray="2 3"/></svg>`;
+    return `<svg width="${w}" height="${h}"><line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#313244" stroke-dasharray="2 3"/></svg>`;
   }
-
   const values = points.map(p => p.value);
   const min = Math.min(...values), max = Math.max(...values);
   const range = (max - min) || 1;
   const xy = points.map((p, i) => {
-    const x = points.length > 1 ? (i / (points.length - 1)) * w : w / 2;
+    const x = points.length > 1 ? (i / (points.length - 1)) * (w-2) + 1 : w / 2;
     const y = padY + (1 - (p.value - min) / range) * usableH;
     return { x, y };
   });
-
   if (points.length < MIN_DAYS_FOR_LINE) {
-    const dots = xy.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.2" fill="currentColor"/>`).join('');
-    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-      ${dots}
-      <text x="${w-2}" y="${h-3}" text-anchor="end" fill="#7a8390" font-size="9" font-family="ui-monospace,monospace">${points.length}d</text>
-    </svg>`;
+    const dots = xy.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="currentColor"/>`).join('');
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${dots}<text x="${w-2}" y="${h-2}" text-anchor="end" fill="#6c7086" font-size="9" font-family="JetBrains Mono, monospace">${points.length}d</text></svg>`;
   }
-
   const path = xy.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const last = xy[xy.length - 1];
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-    <polyline points="${path}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-    <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="2.2" fill="currentColor"/>
+    <polyline points="${path}" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>
+    <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="2" fill="currentColor"/>
   </svg>`;
 }
 
-function deltaArrow(d) {
-  if (d === null || d === undefined || isNaN(d)) return '';
-  if (Math.abs(d) < 0.5) return `<span class="delta flat">±0</span>`;
-  if (d > 0) return `<span class="delta up">▲ +${d.toFixed(1)}</span>`;
-  return `<span class="delta down">▼ ${d.toFixed(1)}</span>`;
+function deltaSpan(d) {
+  if (d === null || d === undefined || isNaN(d)) return `<span class="delta flat">—</span>`;
+  if (Math.abs(d) < 0.5) return `<span class="delta flat">±0.0</span>`;
+  if (d > 0) return `<span class="delta up">+${d.toFixed(1)}</span>`;
+  return `<span class="delta down">${d.toFixed(1)}</span>`;
 }
 
-function pillClass(score) {
-  if (score >= 75) return 'imp-5';
-  if (score >= 60) return 'imp-4';
-  if (score >= 45) return 'imp-3';
-  if (score >= 30) return 'imp-2';
+function dimVerdictClass(score) {
+  if (score >= 60) return 'accel';
+  if (score >= 40) return 'steady';
+  return 'slow';
+}
+function bandColor(score){
+  if (score >= 60) return 'var(--pos)';
+  if (score >= 40) return 'var(--warn)';
+  return 'var(--neg)';
+}
+
+function impClass(imp) {
+  const i = Math.round(imp || 0);
+  if (i >= 5) return 'imp-5';
+  if (i >= 4) return 'imp-4';
+  if (i >= 3) return 'imp-3';
+  if (i >= 2) return 'imp-2';
   return 'imp-1';
 }
 
-async function load() {
-  const res = await fetch('/api/scoreboard');
-  const s = await res.json();
+function pad2(n){ return n < 10 ? '0' + n : '' + n; }
+function nowHHMMSS(){ const d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()); }
+function todayYMD(){ const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
 
-  // Headline
+let STATE = { scoreboard: null, baselines: null, selectedDim: null, pickedDate: null };
+
+function fmtRaw(dim, raw){
+  if (!raw) return '—';
+  const parts = [];
+  for (const [k, v] of Object.entries(raw)){
+    if (v == null) continue;
+    let display;
+    if (typeof v === 'number'){
+      if (k.endsWith('_pct')) display = v.toFixed(1) + '%';
+      else if (k === 'frontier_median_usd_mtok') display = '$' + v.toFixed(2) + '/MTok';
+      else if (k === 'gw_30d') display = v.toFixed(1) + ' GW';
+      else display = (Number.isInteger(v) ? v.toString() : v.toFixed(1));
+    } else { display = String(v); }
+    parts.push(`<span class="kv"><span class="kv-label">${k}</span><span class="kv-value">${display}</span></span>`);
+  }
+  return parts.join('') || '—';
+}
+
+function renderSidebar(){
+  const aside = document.getElementById('dim-aside');
+  const dim = STATE.selectedDim;
+  if (!dim || !STATE.scoreboard){ aside.hidden = true; return; }
+  const d = STATE.scoreboard.dimensions[dim];
+  if (!d){ aside.hidden = true; return; }
+  aside.hidden = false;
+  const cls = dimVerdictClass(d.score);
+  const verdict = cls === 'accel' ? 'ACCELERATING' : cls === 'slow' ? 'SLOWING' : 'STEADY';
+  const tagged = signalsForDim(STATE.scoreboard.what_changed, dim);
+  const headlines = (d.headlines || []).slice(0, 4);
+
+  const sigItems = tagged.length ? tagged.slice(0, 6).map(it => `
+    <li class="tldr-row ${impClass(it.importance)}">
+      <span class="score">${it.importance || 0}/5</span>
+      <a class="tldr" href="/signal/${it.raw_item_id}">${it.tldr || it.title || ''}</a>
+      <span></span>
+    </li>`).join('') : `<li class="empty">no 7d signals tagged for ${d.label}</li>`;
+
+  const headlineList = headlines.length
+    ? headlines.map(h => `<div class="aside-head">· ${h}</div>`).join('')
+    : `<div class="aside-head" style="color:var(--fg-caption);">no recent headlines</div>`;
+
+  document.getElementById('dim-aside-inner').innerHTML = `
+    <div class="aside-top">
+      <div>
+        <div class="aside-eyebrow">${dim}</div>
+        <div class="aside-title">${d.label}</div>
+      </div>
+      <button id="aside-close" class="sync-btn" type="button" style="font-size:var(--ts-xs);">✕</button>
+    </div>
+    <div class="aside-stat">
+      <span class="aside-score ${cls}">${d.score.toFixed(1)}</span>
+      <span class="head-baseline">vs baseline 50</span>
+      ${deltaSpan(d.delta_wow)}
+      <span style="color:var(--fg-caption); font-size:var(--ts-micro); margin-left:4px;">WoW</span>
+      <span style="margin-left:auto;" class="verdict ${cls === 'accel' ? 'verdict-accel' : cls === 'slow' ? 'verdict-low' : 'verdict-steady'}">${verdict}</span>
+    </div>
+    <div class="aside-spark" style="color:${bandColor(d.score)}">${sparklineSVG(d.sparkline, 360, 60)}</div>
+
+    <div class="rule" style="margin-top:8px;"><span>RAW INPUTS</span><span class="rule-fill">────────────────────────────</span></div>
+    <div class="aside-raw">${fmtRaw(dim, d.raw)}</div>
+
+    <div class="rule"><span>BASELINE</span><span class="rule-fill">────────────────────────────</span></div>
+    <div class="aside-raw">${fmtRaw(dim, d.baseline)}</div>
+
+    <div class="rule"><span>HEADLINES</span><span class="rule-fill">────────────────────────────</span></div>
+    <div class="aside-headlines">${headlineList}</div>
+
+    <div class="rule"><span>TAGGED SIGNALS · 7d</span><span class="rule-fill">────────────────────</span></div>
+    <ul class="tldr-list aside-signals">${sigItems}</ul>
+  `;
+
+  document.getElementById('aside-close').onclick = () => { STATE.selectedDim = null; STATE.pickedDate = null; renderAll(); };
+}
+
+function renderDimTable(){
+  const s = STATE.scoreboard;
+  const tbody = document.querySelector('#dim-table tbody');
+  tbody.innerHTML = '';
+  for (const dim of DIM_ORDER) {
+    const d = s.dimensions[dim];
+    if (!d) continue;
+    const cls = dimVerdictClass(d.score);
+    const heads = (d.headlines || []).slice(0, 3)
+      .map(h => `<span class="head-item">${h}</span>`)
+      .join('') || `<span class="head-item" style="color:var(--fg-caption);">no recent headlines</span>`;
+    const tr = document.createElement('tr');
+    tr.dataset.dim = dim;
+    if (STATE.selectedDim === dim) tr.classList.add('selected');
+    tr.innerHTML = `
+      <td>
+        <div class="dim-name">${d.label}</div>
+        <div class="dim-sub">${dim}</div>
+      </td>
+      <td class="num"><span class="dim-score ${cls}">${d.score.toFixed(0)}</span></td>
+      <td class="num">${deltaSpan(d.delta_wow)}</td>
+      <td><span class="dim-spark" style="color: ${bandColor(d.score)};">${sparklineSVG(d.sparkline, 140, 28)}</span></td>
+      <td><div class="dim-headlines">${heads}</div></td>
+    `;
+    tr.onclick = () => {
+      STATE.selectedDim = (STATE.selectedDim === dim) ? null : dim;
+      STATE.pickedDate = null;
+      renderAll();
+    };
+    tbody.appendChild(tr);
+  }
+  const dims = Object.values(s.dimensions || {});
+  const accel  = dims.filter(d => d.score >= 60).length;
+  const steady = dims.filter(d => d.score >= 40 && d.score < 60).length;
+  const slow   = dims.filter(d => d.score < 40).length;
+  document.getElementById('dim-rule-right').textContent =
+    `${accel} accel · ${steady} steady · ${slow} slowing`;
+}
+
+function renderHeatmap(){
+  const s = STATE.scoreboard;
+  const allDates = new Set();
+  DIM_ORDER.forEach(dim => (s.dimensions[dim]?.sparkline || []).forEach(p => allDates.add(p.day)));
+  const dates = Array.from(allDates).sort();
+  const dateIdx = new Map(dates.map((d,i)=>[d,i]));
+
+  const cell = 16;
+  const labelW = 130;
+  const today = dates[dates.length - 1];
+
+  const head = `<tr>
+    <th style="width:${labelW}px; min-width:${labelW}px; text-align:left;"></th>
+    ${dates.map(d => {
+      const [_y,m,da] = d.split('-');
+      const isToday = d === today;
+      return `<th style="color:${isToday ? 'var(--fg1)' : 'var(--fg-caption)'}; padding:2px 1px; font-weight:500; font-size:9px; text-align:center; width:${cell}px; min-width:${cell}px;">${m}/${da}</th>`;
+    }).join('')}
+  </tr>`;
+
+  const rows = DIM_ORDER.map(dim => {
+    const d = s.dimensions[dim];
+    if (!d) return '';
+    const lookup = new Map((d.sparkline || []).map(p => [p.day, p.value]));
+    const cells = dates.map(date => {
+      const v = lookup.get(date);
+      if (v == null) return `<td style="padding:1px; text-align:center;"><div style="width:${cell-4}px; height:${cell-4}px; margin:0 auto; background:var(--hairline); opacity:0.4;" title="${date} · no data"></div></td>`;
+      const cls = dimVerdictClass(v);
+      const col = cls === 'accel' ? 'var(--pos)' : cls === 'slow' ? 'var(--neg)' : 'var(--warn)';
+      const alpha = cls === 'accel' ? 0.95 : cls === 'slow' ? 0.85 : 0.7;
+      const isPick = STATE.selectedDim === dim && (STATE.pickedDate === date || (!STATE.pickedDate && date === today));
+      const outline = isPick ? '1px solid var(--fg1)' : (date === today ? '1px solid var(--fg2)' : 'none');
+      return `<td style="padding:1px; text-align:center;">
+        <div class="hm-cell" data-dim="${dim}" data-date="${date}" data-val="${v.toFixed(1)}"
+             title="${dim} · ${date} → ${v.toFixed(1)}"
+             style="width:${cell-4}px; height:${cell-4}px; margin:0 auto; background:${col}; opacity:${isPick ? 1 : alpha}; outline:${outline};"></div>
+      </td>`;
+    }).join('');
+    const lbl = (s.dimensions[dim].label || dim);
+    const selBg = STATE.selectedDim === dim ? 'background: rgba(137,180,250,0.06);' : '';
+    return `<tr style="${selBg}">
+      <td style="width:${labelW}px; min-width:${labelW}px; padding:2px 10px 2px 0; color:${STATE.selectedDim===dim ? 'var(--fg1)' : 'var(--fg2)'}; font-weight:600; font-size:var(--ts-xs); cursor:pointer;" data-dim-label="${dim}">${lbl}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  document.getElementById('heatmap').innerHTML = `
+    <table style="border-collapse:collapse; font-variant-numeric:tabular-nums;">
+      <thead>${head}</thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  document.querySelectorAll('.hm-cell').forEach(el => {
+    el.onclick = (e) => {
+      const dim = el.dataset.dim;
+      const date = el.dataset.date;
+      STATE.selectedDim = dim;
+      STATE.pickedDate = (date === today) ? null : date;
+      renderAll();
+    };
+  });
+  document.querySelectorAll('[data-dim-label]').forEach(el => {
+    el.onclick = () => {
+      const dim = el.dataset.dimLabel;
+      STATE.selectedDim = (STATE.selectedDim === dim) ? null : dim;
+      STATE.pickedDate = null;
+      renderAll();
+    };
+  });
+}
+
+function renderHeadline(){
+  const s = STATE.scoreboard;
   const verdictClass = s.verdict === 'ACCELERATING' ? 'verdict-accel'
                      : s.verdict === 'STEADY' ? 'verdict-steady' : 'verdict-low';
   document.getElementById('headline').innerHTML = `
-    <div class="head-left">
-      <div class="head-label">AI Acceleration Index</div>
-      <div class="head-question">Faster than consensus expects?</div>
+    <div>
+      <div class="head-label">AI ACCELERATION INDEX</div>
+      <div class="head-question">are we approaching transformative AI faster than consensus expects?</div>
     </div>
     <div class="head-mid">
-      <div class="head-num">${s.index.toFixed(1)}<span class="of100">/100</span></div>
-      ${deltaArrow(s.index_delta_wow)}
+      <span class="head-num">${s.index.toFixed(1)}</span>
+      <span class="head-baseline">vs baseline 50</span>
+      ${deltaSpan(s.index_delta_wow)}
+      <span style="color:var(--fg-caption); font-size:var(--ts-micro); margin-left:6px;">WoW</span>
     </div>
     <div class="head-right">
-      <div class="${verdictClass}">${s.verdict}</div>
-      ${sparklineSVG(s.sparkline_index, 200, 48)}
+      <div class="verdict ${verdictClass}">${s.verdict}</div>
+      ${sparklineSVG(s.sparkline_index, 220, 44)}
     </div>`;
+}
 
-  // Dimensions
-  const grid = document.getElementById('dimensions');
-  grid.innerHTML = '';
-  const order = ['capability','recursive_ai','infrastructure','inference_cost','hyperscaler','enterprise_roi'];
-  for (const dim of order) {
-    const d = s.dimensions[dim];
-    if (!d) continue;
-    const card = document.createElement('div');
-    card.className = `dim-card ${pillClass(d.score)}`;
-    const heads = (d.headlines || []).map(h => `<div class="dim-head">${h}</div>`).join('');
-    card.innerHTML = `
-      <div class="dim-top">
-        <span class="dim-label">${d.label}</span>
-        <span class="dim-score">${d.score.toFixed(0)} ${deltaArrow(d.delta_wow)}</span>
-      </div>
-      <div class="dim-spark">${sparklineSVG(d.sparkline, 140, 32)}</div>
-      ${heads}`;
-    grid.appendChild(card);
-  }
+function renderMeta(){
+  const s = STATE.scoreboard;
+  document.getElementById('meta-date').textContent = todayYMD();
+  const vSpan = document.getElementById('meta-verdict');
+  vSpan.textContent = s.verdict;
+  vSpan.className = 'kv-value ' + (s.verdict === 'ACCELERATING' ? 'pos' : s.verdict === 'STEADY' ? 'warn' : 'neg');
+  const dims = Object.values(s.dimensions || {});
+  document.getElementById('meta-accel').textContent  = dims.filter(d => d.score >= 60).length;
+  document.getElementById('meta-steady').textContent = dims.filter(d => d.score >= 40 && d.score < 60).length;
+  document.getElementById('meta-slow').textContent   = dims.filter(d => d.score < 40).length;
+  document.getElementById('meta-signals').textContent = (s.what_changed || []).length;
+  document.getElementById('meta-days').textContent = s.days_tracked != null ? s.days_tracked : '—';
+  document.getElementById('meta-synced').textContent = nowHHMMSS();
+}
 
-  // What changed
+function renderWhatChanged(){
+  const s = STATE.scoreboard;
   const wc = document.getElementById('what-changed');
   if (s.what_changed && s.what_changed.length) {
     wc.innerHTML = s.what_changed.map(item => `
-      <li class="tldr-row imp-${item.importance || 0}">
+      <li class="tldr-row ${impClass(item.importance)}">
         <span class="score">${item.importance || 0}/5</span>
         <a class="tldr" href="/signal/${item.raw_item_id}">${item.tldr || item.title || ''}</a>
-        ${item.tickers && item.tickers.length ? `<span class="tickers">${item.tickers.join(' ')}</span>` : ''}
+        ${item.tickers && item.tickers.length ? `<span class="tickers">${item.tickers.join(' ')}</span>` : '<span></span>'}
       </li>`).join('');
   } else {
     wc.innerHTML = '<li class="empty">no scored signals in the last 7 days</li>';
   }
+}
 
-  // Alerts
+async function renderAlerts(){
   const alertsRes = await fetch('/api/alerts?days=7');
   const alerts = await alertsRes.json();
   const al = document.getElementById('alerts');
   if (alerts.length) {
     al.innerHTML = alerts.slice(0, 8).map(a => `
       <li class="alert-row sev-${a.severity}">
-        <span class="alert-icon">${a.severity === 'critical' ? '🔴' : a.severity === 'warn' ? '⚠' : 'ℹ'}</span>
-        <div class="alert-body">
+        <span class="alert-icon">${a.severity === 'critical' ? '◆' : a.severity === 'warn' ? '▲' : '·'}</span>
+        <div>
           <div class="alert-headline">${a.headline}</div>
           <div class="alert-detail">${a.detail || ''}</div>
         </div>
       </li>`).join('');
   } else {
-    al.innerHTML = '<li class="empty">no alerts (need score history for thresholds to trigger)</li>';
+    al.innerHTML = '<li class="empty">no alerts — need score history for thresholds to trigger</li>';
   }
 }
 
+function renderAll(){
+  if (!STATE.scoreboard) return;
+  renderHeadline();
+  renderMeta();
+  renderDimTable();
+  renderHeatmap();
+  renderWhatChanged();
+  renderSidebar();
+}
+
+async function load() {
+  const res = await fetch('/api/scoreboard');
+  STATE.scoreboard = await res.json();
+  renderAll();
+  renderAlerts();
+}
+
+/* Keyboard nav — j/k cycle dims, Enter open/close, Esc close. */
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  const cur = STATE.selectedDim;
+  if (e.key === 'j' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const idx = cur ? DIM_ORDER.indexOf(cur) : -1;
+    STATE.selectedDim = DIM_ORDER[(idx + 1) % DIM_ORDER.length];
+    STATE.pickedDate = null;
+    renderAll();
+  } else if (e.key === 'k' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const idx = cur ? DIM_ORDER.indexOf(cur) : 0;
+    STATE.selectedDim = DIM_ORDER[(idx - 1 + DIM_ORDER.length) % DIM_ORDER.length];
+    STATE.pickedDate = null;
+    renderAll();
+  } else if (e.key === 'Enter') {
+    if (!cur) { STATE.selectedDim = DIM_ORDER[0]; renderAll(); }
+  } else if (e.key === 'Escape') {
+    if (cur) { STATE.selectedDim = null; STATE.pickedDate = null; renderAll(); }
+  }
+});
+
+document.getElementById('sync-btn').addEventListener('click', () => load());
 load();
-setInterval(load, 60000);  // refresh every minute
+setInterval(load, 60000);
 </script>
 {% endblock %}
