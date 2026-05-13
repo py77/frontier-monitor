@@ -27,7 +27,7 @@ Every new feature must serve one of these six dimensions or get rejected:
 
 | Dimension | What it measures | Current data source |
 |---|---|---|
-| **Capability** | frontier model progress | 100% Anthropic-narrative signals (no quantitative anchor) — anthropic.com/news, /engineering, /research (sitemap.xml-based discovery, per-article OG-meta scraping) + claude.com/blog (listing-based). Tags: `scaling`, `reasoning`, `agentic`, `interpretability`, `architectures`. |
+| **Capability** | frontier model progress | 100% Anthropic-narrative signals (no quantitative anchor) — anthropic.com/news, /engineering, /research (sitemap.xml URL discovery, per-article HTML scrape) + claude.com/blog (listing-based). Tags: `scaling`, `reasoning`, `agentic`, `interpretability`, `architectures`. |
 | **Recursive AI** | AI improving AI; alignment & self-evolution | Signals tagged `recursive-self-improvement`, `self-evolution`, `instrumental-convergence`, `alignment`, `safety` — primarily from anthropic.com/research (Frontier Red Team, Alignment, Interpretability divisions) |
 | **Infrastructure** | GPUs, power, datacenter buildout | Merchant AI-silicon revenue: dollar-weighted YoY across NVDA DC + AMD DC + AVGO AI (70%) + GW commitments parsed from `compute`/`data-center`/`power` signal text (30%) |
 | **Inference Cost** | $/MTok collapse | OpenRouter pricing scrape (real data, daily) |
@@ -95,7 +95,7 @@ backend/app/
   models/                       SQLAlchemy ORM
   services/
     bootstrap.py                Idempotent source seeding + obsolete-source pruning
-    anthropic_html_ingest.py    HTML scraper for anthropic.com/news, /engineering, /research (sitemap-driven) + claude.com/blog (listing-driven)
+    anthropic_html_ingest.py    HTML scraper for anthropic.com/news, /engineering, /research (sitemap-driven URL discovery) + claude.com/blog (listing-driven). Resolves published_at via og meta → JSON-LD `datePublished` → body `<div class="…agate…">` dateline. Sitemap `<lastmod>` is NOT used as a date proxy (Anthropic bumps it on site-wide republishes). Exposes `backfill_published_at()` for repair after extractor changes.
     openrouter_ingest.py        OpenRouter pricing → inference cost trajectory
     capex_ingest.py             Hyperscaler quarterly capex (MSFT/GOOGL/META/AMZN 8-Ks)
     merchant_ai_ingest.py       Merchant AI silicon revenue (NVDA/AMD DC + AVGO AI)
@@ -135,9 +135,20 @@ Invoke-RestMethod -Method POST http://localhost:8765/api/ingest/<source_id>
 # Rebase the score baseline to "today" (zeros all dimensions to 50)
 Invoke-RestMethod -Method POST http://localhost:8765/api/baselines/snapshot
 
-# Verify
+# Re-extract published_at for every anthropic_html / claude_blog raw_item from live HTML.
+# Use after Anthropic changes their HTML shape and the extractor stops finding dates,
+# or after editing the resolver in anthropic_html_ingest.py.
+Invoke-RestMethod -Method POST http://localhost:8765/api/admin/backfill-anthropic-dates -TimeoutSec 900
+
+# Verify (read-only — does NOT persist a timeseries point; only the hourly score_job writes)
 Invoke-RestMethod http://localhost:8765/api/scoreboard
 ```
+
+### "Recent" means article-published, not signal-scored
+
+Every 30-day window in the system (dimension `signal_sum`, per-dimension `headlines`, the `What Changed · 7d` panel) filters by `COALESCE(RawItem.published_at, RawItem.fetched_at) >= cutoff` — never by `Signal.created_at`. Otherwise a fresh `/refresh` on a backlog of year-old articles inflates current scores and surfaces ancient news as "this week." If you add a new "recent" query somewhere, follow this same pattern.
+
+Headlines additionally filter by `Signal.pillar == dim` (the analyst-assigned primary dimension) so cross-tagged signals aren't shown twice. The `signal_sum` calculation stays cross-cutting — a genuinely cross-dim signal still inflates multiple dimensions' cadence.
 
 `/refresh` and `/memo` are user-typed slash commands in Claude Code. They are not invokable from inside a session.
 

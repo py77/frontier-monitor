@@ -2,17 +2,19 @@
 
 Two discovery strategies:
 
-* **Sitemap-based** (anthropic_research): fetch anthropic.com/sitemap.xml, filter
-  URLs whose path starts with /research/, use <lastmod> as a published_at proxy.
+* **Sitemap-based** (anthropic_news/engineering/research): fetch anthropic.com/sitemap.xml,
+  filter URLs by path prefix. Sitemap <lastmod> is used ONLY for ordering — never as a
+  published_at proxy, because Anthropic bumps lastmod on site-wide republishes.
 * **Listing-based** (claude_blog): fetch claude.com/blog HTML, extract /blog/* hrefs.
 
-For each discovered URL not already in raw_items, fetch the article and pull
-og:title + og:description + article:published_time. The /refresh analyst
-classifies content via tags — Frontier Red Team / alignment / interpretability
-papers will pick up `alignment`/`safety`/`interpretability` tags and feed the
-Recursive AI dimension automatically.
+For each discovered URL not already in raw_items, fetch the article and resolve
+published_at via this fallback chain: og meta `article:published_time` → JSON-LD
+`datePublished` (claude.com/blog) → body dateline scrape (anthropic.com — looks for
+"Mon DD, YYYY" in a `body-3 agate` div) → NULL. We never fall back to sitemap
+lastmod because that field is unreliable.
 """
 import hashlib
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -51,6 +53,81 @@ def _meta_content(html: str, prop: str) -> str | None:
         if m:
             return m.group(1)
     return None
+
+
+_DATE_TEXT_RE = re.compile(
+    r"\b(January|February|March|April|May|June|July|August|September|October|November|December|"
+    r"Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(20\d{2})\b"
+)
+_AGATE_DIV_RE = re.compile(
+    r'<div[^>]*class=["\'][^"\']*\bagate\b[^"\']*["\'][^>]*>([^<]+)</div>',
+    re.IGNORECASE,
+)
+_JSONLD_RE = re.compile(
+    r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parse_date_text(s: str) -> datetime | None:
+    m = _DATE_TEXT_RE.search(s)
+    if not m:
+        return None
+    month, day, year = m.group(1), int(m.group(2)), int(m.group(3))
+    for fmt in ("%B", "%b"):
+        try:
+            month_dt = datetime.strptime(month, fmt)
+            return datetime(year, month_dt.month, day, tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _extract_jsonld_date(html: str) -> datetime | None:
+    """Pull datePublished out of any application/ld+json block (claude.com/blog)."""
+    for m in _JSONLD_RE.finditer(html):
+        try:
+            data = json.loads(m.group(1).strip())
+        except (json.JSONDecodeError, ValueError):
+            continue
+        candidates = data if isinstance(data, list) else [data]
+        for c in candidates:
+            if not isinstance(c, dict):
+                continue
+            dp = c.get("datePublished") or c.get("dateCreated")
+            if not dp:
+                continue
+            try:
+                return datetime.fromisoformat(dp.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+            parsed = _parse_date_text(dp)
+            if parsed:
+                return parsed
+    return None
+
+
+def _extract_body_dateline(html: str) -> datetime | None:
+    """Anthropic article pages have no date meta — only a `<div class='... agate'>Mon DD, YYYY</div>`."""
+    for m in _AGATE_DIV_RE.finditer(html):
+        parsed = _parse_date_text(m.group(1))
+        if parsed:
+            return parsed
+    return None
+
+
+def resolve_published_at(html: str, source_id: str) -> datetime | None:
+    """og meta → JSON-LD → body dateline → None. Never lastmod."""
+    pub_str = _meta_content(html, "article:published_time")
+    if pub_str:
+        try:
+            return datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    jsonld = _extract_jsonld_date(html)
+    if jsonld:
+        return jsonld
+    return _extract_body_dateline(html)
 
 
 async def _fetch(client: httpx.AsyncClient, url: str) -> str | None:
@@ -164,15 +241,7 @@ async def ingest_source(source_id: str) -> dict:
                     continue
                 title = (_meta_content(html, "og:title") or url.rsplit("/", 1)[-1]).strip()[:1000]
                 desc = (_meta_content(html, "og:description") or "")[:50000]
-                pub_str = _meta_content(html, "article:published_time")
-                published: datetime | None = None
-                if pub_str:
-                    try:
-                        published = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
-                    except ValueError:
-                        pass
-                if not published and lastmod:
-                    published = lastmod
+                published = resolve_published_at(html, source_id)
 
                 stmt = pg_insert(RawItem).values(
                     id=ids_for_urls[url],
@@ -201,3 +270,51 @@ async def ingest_source(source_id: str) -> dict:
                 "new_articles": len(new_urls),
                 "inserted": inserted,
             }
+
+
+async def backfill_published_at(source_ids: list[str] | None = None) -> dict:
+    """Re-fetch each anthropic/claude_blog raw_item and resolve published_at fresh.
+
+    Cleans up rows that were stamped with sitemap lastmod (now-known-bad) or NULL.
+    Updates only when the resolver returns a new value — leaves NULL when nothing
+    can be extracted, rather than re-asserting a wrong date.
+    """
+    targets = source_ids or list(DISCOVERERS.keys())
+    async with async_session() as db:
+        rows = (
+            await db.execute(
+                select(RawItem.id, RawItem.url, RawItem.source_id, RawItem.published_at)
+                .where(RawItem.source_id.in_(targets))
+            )
+        ).all()
+
+        updated = 0
+        unchanged = 0
+        unresolved = 0
+        async with httpx.AsyncClient(headers={"User-Agent": UA}) as client:
+            for raw_id, url, source_id, current in rows:
+                if not url:
+                    unresolved += 1
+                    continue
+                html = await _fetch(client, url)
+                if not html:
+                    unresolved += 1
+                    continue
+                resolved = resolve_published_at(html, source_id)
+                if resolved is None:
+                    unresolved += 1
+                    continue
+                if current and abs((current - resolved).total_seconds()) < 60:
+                    unchanged += 1
+                    continue
+                item = await db.get(RawItem, raw_id)
+                if item:
+                    item.published_at = resolved
+                    updated += 1
+            await db.commit()
+        return {
+            "scanned": len(rows),
+            "updated": updated,
+            "unchanged": unchanged,
+            "unresolved": unresolved,
+        }

@@ -60,6 +60,17 @@ async def trigger_ingest(source_id: str, db: AsyncSession = Depends(get_db)) -> 
     raise HTTPException(status_code=400, detail=f"no ingester for kind={src.kind}")
 
 
+@router.post("/admin/backfill-anthropic-dates")
+async def backfill_anthropic_dates() -> dict:
+    """Re-resolve published_at for every anthropic_html raw_item from live HTML.
+
+    Use after the date-extraction logic changes (e.g. Anthropic site redesign breaking
+    sitemap lastmod). Idempotent — only writes when the new resolved value differs.
+    """
+    from app.services.anthropic_html_ingest import backfill_published_at
+    return await backfill_published_at()
+
+
 @router.post("/sources/{source_id}/toggle")
 async def toggle_source(source_id: str, db: AsyncSession = Depends(get_db)):
     src = await db.get(Source, source_id)

@@ -76,8 +76,15 @@ const TAG_TO_DIM = {
 };
 function tagsForDim(dim){ return new Set(TAG_TO_DIM[dim] || []); }
 function signalsForDim(items, dim){
-  const tags = tagsForDim(dim);
-  return (items || []).filter(it => (it.dimension_tags || []).some(t => tags.has(t)));
+  // A signal belongs to ONE primary dimension (its pillar). Cross-tagged signals
+  // still inflate multiple dimensions' scores, but are only listed under the primary
+  // pillar to avoid duplication across panels. Falls back to tag intersection only
+  // for legacy items that pre-date the pillar field.
+  return (items || []).filter(it => {
+    if (it.pillar) return it.pillar === dim;
+    const tags = tagsForDim(dim);
+    return (it.dimension_tags || []).some(t => tags.has(t));
+  });
 }
 
 function sparklineSVG(points, width=120, height=28) {

@@ -19,7 +19,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import async_session
-from app.models import Signal, TimeseriesPoint
+from app.models import RawItem, Signal, TimeseriesPoint
 from app.services.baselines import (
     is_uninitialized,
     load_baselines,
@@ -145,10 +145,13 @@ async def _ticker_latest_yoy(db, series: str) -> tuple[float, float] | None:
 # ─── Per-dimension RAW collectors (return raw inputs + headlines) ─────────────────────
 
 async def _capability_raw(recent_signals: list[Signal]) -> tuple[dict, list[str]]:
+    # signal_sum stays cross-cutting (a cross-tagged signal genuinely contributes to
+    # multiple dimensions' cadence). Headlines filter to s.pillar so a signal only
+    # appears under its primary dimension — no duplicates across panels.
     sig_sum = sum(_signal_score(s.payload, DIMENSION_TAGS["capability"]) for s in recent_signals)
     matched = [
         s for s in recent_signals
-        if set(s.payload.get("pillar_tags") or []) & DIMENSION_TAGS["capability"]
+        if s.pillar == "capability"
         and float(s.payload.get("importance_0_5", 0) or 0) >= 2
     ]
     matched.sort(key=lambda s: float(s.payload.get("importance_0_5", 0) or 0), reverse=True)
@@ -160,9 +163,10 @@ async def _recursive_ai_raw(recent_signals: list[Signal]) -> tuple[dict, list[st
     sig_sum = sum(_signal_score(s.payload, DIMENSION_TAGS["recursive_ai"]) for s in recent_signals)
     matched = [
         s for s in recent_signals
-        if set(s.payload.get("pillar_tags") or []) & DIMENSION_TAGS["recursive_ai"]
+        if s.pillar == "recursive_ai"
         and float(s.payload.get("importance_0_5", 0)) >= 3
     ]
+    matched.sort(key=lambda s: float(s.payload.get("importance_0_5", 0) or 0), reverse=True)
     headlines = [s.payload.get("tldr") or "" for s in matched[:2] if s.payload.get("tldr")]
     return {"signal_sum": sig_sum}, headlines
 
@@ -229,7 +233,7 @@ async def _inference_cost_raw(db, recent_signals: list[Signal]) -> tuple[dict, l
     else:
         headlines.append("OpenRouter pricing pending")
 
-    matched = [s for s in recent_signals if set(s.payload.get("pillar_tags") or []) & DIMENSION_TAGS["inference_cost"]]
+    matched = [s for s in recent_signals if s.pillar == "inference_cost"]
     if matched and matched[0].payload.get("tldr"):
         headlines.append(matched[0].payload["tldr"])
 
@@ -384,11 +388,18 @@ _SCORERS = {
 async def collect_all_raws() -> tuple[dict[str, dict], dict[str, list[str]]]:
     """Compute all dimensions' raw inputs (no scoring). Used both by compute_scores() and
     by the baselines snapshot endpoint."""
+    # "Recent" means the underlying article was published (or first fetched, when no
+    # publish date is available) within WINDOW_DAYS — NOT when the signal was scored.
+    # Otherwise a fresh /refresh on a backlog of year-old articles inflates dimension
+    # signal_sum and surfaces ancient news as "recent headlines."
     cutoff = datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)
+    article_ts = func.coalesce(RawItem.published_at, RawItem.fetched_at)
     async with async_session() as db:
         recent_signals = (
             await db.execute(
-                select(Signal).where(Signal.created_at >= cutoff, Signal.analyst_version == "v1")
+                select(Signal)
+                .join(RawItem, Signal.raw_item_id == RawItem.id)
+                .where(Signal.analyst_version == "v1", article_ts >= cutoff)
             )
         ).scalars().all()
 
