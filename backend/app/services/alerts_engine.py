@@ -12,13 +12,18 @@ from app.services.score_engine import DIMENSION_LABELS
 logger = logging.getLogger(__name__)
 
 
-# Rules: (dimension, threshold delta WoW, severity, headline template)
+# Rules: (series, threshold delta WoW, severity, headline template)
+# Score series carry 0-100 deltas; GPU rental series carry $/GPU/hr deltas (2-decimal).
 RULES = [
     ("score_index", 5, "warn", "Acceleration Index up {delta:+.1f} wk/wk"),
     ("score_recursive_ai", 8, "warn", "Recursive-AI dimension up {delta:+.1f} wk/wk"),
     ("score_capability", 8, "warn", "Capability dimension up {delta:+.1f} wk/wk"),
     ("score_infrastructure", 10, "warn", "Infrastructure dimension up {delta:+.1f} wk/wk"),
     ("score_index", -5, "info", "Acceleration Index down {delta:+.1f} wk/wk"),
+    # GPU rental scarcity — rising rental $/hr = tightening compute demand (Infrastructure).
+    ("gpu_h100_sxm_ondemand_median", 0.5, "warn", "H100 SXM rental {delta:+.2f} $/hr wk/wk — GPU demand tightening"),
+    ("gpu_h200_ondemand_median", 0.5, "warn", "H200 rental {delta:+.2f} $/hr wk/wk — GPU demand tightening"),
+    ("gpu_h100_sxm_ondemand_median", -0.5, "info", "H100 SXM rental {delta:+.2f} $/hr wk/wk — easing"),
 ]
 
 
@@ -67,12 +72,18 @@ async def scan_and_fire() -> int:
             if existing:
                 continue
 
-            dim = series.removeprefix("score_")
+            if series.startswith("score_"):
+                dim = series.removeprefix("score_")
+                detail = f"{DIMENSION_LABELS.get(dim, dim)}: {week_row.value:.1f} → {latest_row.value:.1f}"
+            else:
+                # gpu_* and other raw-value series: 2-decimal $/hr, filed under Infrastructure.
+                dim = "infrastructure"
+                detail = f"{series.removeprefix('gpu_')}: ${week_row.value:.2f} → ${latest_row.value:.2f} /hr"
             db.add(Alert(
                 dimension=dim,
                 severity=severity,
                 headline=headline,
-                detail=f"{DIMENSION_LABELS.get(dim, dim)}: {week_row.value:.1f} → {latest_row.value:.1f}",
+                detail=detail,
                 data={"series": series, "delta": delta, "threshold": threshold},
             ))
             fired += 1

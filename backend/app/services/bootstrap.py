@@ -81,6 +81,63 @@ DEFAULT_SOURCES: list[dict] = [
         "url": "file:///app/../config/enterprise_roi.json",
         "enabled": True,
     },
+    # Infrastructure (live GPU rental rates) — compute-demand / scarcity signal. Companion to
+    # the quarterly merchant-silicon supply-side series. kind="gpu_rental" sources are polled
+    # every 6h by gpu_rental_job; normalized to $/GPU/hr and written as gpu_* timeseries.
+    # Dispatch + per-provider parsing live in services/gpu_rental_ingest.py (COLLECTORS).
+    # Phase 1 ships Akash first (no-auth, pre-aggregated, no unit trap); more providers added
+    # to gpu_rental_ingest.COLLECTORS get their source row appended here.
+    {
+        "id": "gpu_akash",
+        "pillar": "infrastructure",
+        "kind": "gpu_rental",
+        "url": "https://console-api.akash.network/v1/gpu-prices",
+        "enabled": True,
+    },
+    {
+        "id": "gpu_clore",
+        "pillar": "infrastructure",
+        "kind": "gpu_rental",
+        "url": "https://api.clore.ai/v1/marketplace",
+        "enabled": True,
+    },
+    {
+        "id": "gpu_tensordock",
+        "pillar": "infrastructure",
+        "kind": "gpu_rental",
+        "url": "https://marketplace.tensordock.com/api/v0/client/deploy/hostnodes",
+        "enabled": True,
+    },
+    {
+        "id": "gpu_runpod",
+        "pillar": "infrastructure",
+        "kind": "gpu_rental",
+        "url": "https://api.runpod.io/graphql",
+        "enabled": True,
+    },
+    {
+        "id": "gpu_computeprices",
+        "pillar": "infrastructure",
+        "kind": "gpu_rental",
+        "url": "https://computeprices.com/api/v1/gpu-prices",
+        "enabled": True,
+    },
+    {
+        "id": "gpu_azure",
+        "pillar": "infrastructure",
+        "kind": "gpu_rental",
+        "url": "https://prices.azure.com/api/retail/prices",
+        "enabled": True,
+    },
+    # Vast.ai is ToS-gated on the official API + free key. Ships DISABLED — set VAST_API_KEY in
+    # .env, then enable via POST /api/sources/gpu_vast/toggle. (No anonymous polling.)
+    {
+        "id": "gpu_vast",
+        "pillar": "infrastructure",
+        "kind": "gpu_rental",
+        "url": "https://console.vast.ai/api/v0/bundles/",
+        "enabled": False,
+    },
 ]
 
 

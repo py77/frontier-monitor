@@ -17,3 +17,6 @@ scripts/headless_refresh.log
 
 # debug crash dumps
 *.stackdump
+
+# GPU rental raw-snapshot archive (runtime data, grows unbounded)
+data/gpu_raw/

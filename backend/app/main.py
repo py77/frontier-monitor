@@ -27,7 +27,7 @@ app = FastAPI(title="Frontier Monitor — AI Acceleration Index", version="0.2.0
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-from app.api import ui, signals_api, sources_api, scoreboard_api, alerts_api, digests_api, baselines_api  # noqa: E402
+from app.api import ui, signals_api, sources_api, scoreboard_api, alerts_api, digests_api, baselines_api, gpu_api  # noqa: E402
 
 app.include_router(ui.router, tags=["ui"])
 app.include_router(signals_api.router, prefix="/api", tags=["signals"])
@@ -36,6 +36,7 @@ app.include_router(scoreboard_api.router, prefix="/api", tags=["scoreboard"])
 app.include_router(alerts_api.router, prefix="/api", tags=["alerts"])
 app.include_router(digests_api.router, prefix="/api", tags=["digests"])
 app.include_router(baselines_api.router, prefix="/api", tags=["baselines"])
+app.include_router(gpu_api.router, prefix="/api", tags=["gpu"])
 
 
 @app.get("/health")

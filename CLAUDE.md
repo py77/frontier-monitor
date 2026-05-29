@@ -92,19 +92,21 @@ backend/app/
     alerts_api.py               /api/alerts
     digests_api.py              /api/digests, /api/digests/latest
     baselines_api.py            GET /api/baselines, POST /api/baselines/snapshot
+    gpu_api.py                  GET /api/gpu/rates (drives the /gpu page)
   models/                       SQLAlchemy ORM
   services/
     bootstrap.py                Idempotent source seeding + obsolete-source pruning
-    anthropic_html_ingest.py    HTML scraper for anthropic.com/news, /engineering, /research (sitemap-driven URL discovery) + claude.com/blog (listing-driven). Resolves published_at via og meta → JSON-LD `datePublished` → body `<div class="…agate…">` dateline. Sitemap `<lastmod>` is NOT used as a date proxy (Anthropic bumps it on site-wide republishes). Exposes `backfill_published_at()` for repair after extractor changes.
+    anthropic_html_ingest.py    HTML scraper for anthropic.com/news, /engineering, /research (sitemap-driven URL discovery) + claude.com/blog (listing-driven). Resolves published_at via og meta → JSON-LD `datePublished` → body `<div class="…agate…">` dateline. Sitemap `<lastmod>` is NOT used as a date proxy (Anthropic bumps it on site-wide republishes). Captures article body text via `extract_body_text()` — longest `<article>` block (anthropic.com hero+body pages have two; the body wins) or `<main>` fallback (claude.com/blog) → strip tags, decode entities, collapse whitespace, cap at 20k chars. `raw_text` stores body when extractable, falls back to og:description. `raw_json.body_extracted` flags which is which. Exposes `backfill_published_at()` and `backfill_body_text()` for repair after extractor changes.
     openrouter_ingest.py        OpenRouter pricing → inference cost trajectory
     capex_ingest.py             Hyperscaler quarterly capex (MSFT/GOOGL/META/AMZN 8-Ks)
     merchant_ai_ingest.py       Merchant AI silicon revenue (NVDA/AMD DC + AVGO AI)
     enterprise_roi_ingest.py    Enterprise AI-agent ROI surveys (curated JSON)
+    gpu_rental_ingest.py        GPU rental rates → $/GPU/hr demand/scarcity series (Infrastructure). Per-provider COLLECTORS (Akash/Clore/TensorDock/RunPod/ComputePrices/Azure/Vast) normalize via config/gpu_models.json; recompute_aggregates() blends marketplace+neocloud into headline gpu_<model>_* series. Raw responses gzipped to gpu_raw_dir.
     baselines.py                Per-dimension raw-input baselines + rebased-scoring helpers
     score_engine.py             Six-dimension rebased scores + Acceleration Index
     alerts_engine.py            Threshold detection on score WoW deltas
   tasks/scheduler.py            APScheduler wiring
-  templates/                    Jinja (home, signal_detail, sources)
+  templates/                    Jinja (home, gpu, signal_detail, sources)
   static/css/app.css            Scoreboard styling
 .claude/
   commands/refresh.md           Analyst contract: 50 items → dimension-tagged signals
@@ -117,6 +119,7 @@ config/
   hyperscaler_capex.json        Curated quarterly capex per ticker (8-K cash flow)
   merchant_ai_silicon.json      NVDA/AMD/AVGO segment revenue per quarter
   enterprise_roi.json           Periodic survey datapoints (roi_pct + sample_size)
+  gpu_models.json               Canonical GPU dictionary: provider label → {key, class, interface, vram}. Edit to add models/aliases (unmapped labels are logged per poll). NOTE: read at module import — a JSON-only edit needs `docker compose restart backend` (uvicorn --reload watches .py, not .json).
   baselines.json                Auto-snapshotted raw-input baselines (writable via API)
 backend/alembic/versions/       0001 schema, 0002 FTS (rolled back), 0003 alerts
 ```
@@ -139,6 +142,12 @@ Invoke-RestMethod -Method POST http://localhost:8765/api/baselines/snapshot
 # Use after Anthropic changes their HTML shape and the extractor stops finding dates,
 # or after editing the resolver in anthropic_html_ingest.py.
 Invoke-RestMethod -Method POST http://localhost:8765/api/admin/backfill-anthropic-dates -TimeoutSec 900
+
+# Re-extract article body text into raw_text. Use after editing extract_body_text() in
+# anthropic_html_ingest.py, or after Anthropic/claude.com redesigns break extraction.
+# Idempotent — skips rows already flagged raw_json.body_extracted=true. Client may timeout
+# at long durations; the server keeps processing and commits at end. Re-run to verify.
+Invoke-RestMethod -Method POST http://localhost:8765/api/admin/backfill-anthropic-bodies -TimeoutSec 1800
 
 # Verify (read-only — does NOT persist a timeseries point; only the hourly score_job writes)
 Invoke-RestMethod http://localhost:8765/api/scoreboard
@@ -179,4 +188,5 @@ Global rule: **NEVER read from folders containing "noedge" in the name**. Encode
 
 - **Quarterly capex**: ✅ driven by `config/hyperscaler_capex.json`, manually curated from MSFT/GOOGL/META/AMZN 8-K Ex99.1 cash flow statements (`Purchases of property and equipment` line). After each earnings cycle, append a new quarter object per ticker and re-run `POST /api/ingest/hyperscaler_capex`. The `score_engine._hyperscaler_score` reads `capex_total_quarterly` and computes YoY change vs the same calendar quarter prior year.
 - **Infrastructure (supply-side merchant AI silicon)**: ✅ driven by `config/merchant_ai_silicon.json`, with three ticker sections curated from primary SEC filings: **NVDA** Data Center segment from 10-Q segment revenue tables, **AMD** Data Center segment from 8-K Ex99.1 segment summaries, and **AVGO** "AI semiconductor revenue" from earnings press releases. Each issuer reports on its own fiscal calendar (NVDA FY ends late Jan; AMD FY = calendar; AVGO FY ends early Nov, so AVGO Q4 FY25 ≈ calendar 2025Q3 by revenue period). The `score_engine._infrastructure_score` pulls per-ticker latest-quarter YoY from each series, dollar-weights them so NVDA's revenue base dominates without ignoring AMD/AVGO contributions, then blends 70% with GW/MW commitments parsed from infra-tagged signal `tldr`/`citations` (30%, max-of-fields per signal to avoid double-count when the same number quotes in both). After each issuer's earnings release, append a quarter to the relevant section and re-run `POST /api/ingest/merchant_ai_silicon`. **Why no GOOGL/AMZN section**: TPU and Trainium revenue isn't separately disclosed; AVGO is the closest available proxy because it designs Google's TPU networking and custom hyperscaler silicon.
+- **GPU rental rates (live demand/scarcity, kind=`gpu_rental`)**: ✅ companion to the quarterly supply-side merchant-silicon series. `gpu_rental_job` polls every 6h and writes `$/GPU/hr` series to `timeseries`, surfaced at **`/gpu`** (NOT folded into the Acceleration Index — see below). Sources by venue: live marketplaces (**Akash, Clore, TensorDock, RunPod** — marketplace/neocloud, blended into headline `gpu_<model>_ondemand_median`), cross-provider consensus (**ComputePrices** — `aggregator`, shown separately), and hyperscaler spot (**Azure Retail Prices** — `hyperscaler`, kept separate; ~3-6× neocloud). All no-auth httpx JSON. **Never blend venues in one median** (logic in `gpu_rental_ingest.SOURCE_VENUE` / `_BLEND_VENUES`). Normalization traps live in the collectors (Clore price is per-DAY÷24÷num_gpus; Azure per-GPU = retailPrice÷curated SKU GPU-count in `AZURE_SKUS`; RunPod must pass `secureCloud:false`). **Vast.ai** ships DISABLED — its ToS bans anonymous systematic retrieval, so set `VAST_API_KEY` in `.env` then `POST /api/sources/gpu_vast/toggle`. **Deferred (not gaps, deliberate)**: bespoke Lambda/CoreWeave HTML scrapers (their managed on-demand prices come through ComputePrices cleanly; avoids fragile site scraping); AWS `DescribeSpotPriceHistory` (needs boto3+creds). **Opt-in follow-up**: wiring a GPU-scarcity sub-score into `_score_infrastructure` (+ a `baselines.json` key) would let it move the rebased Index — deliberately NOT done so Phase 1 leaves the Index untouched.
 - **Llama 3.1-405B and Gemini Pro 1.5** are no longer in OpenRouter (deprecated/renamed). Update `FRONTIER_MODELS` in `openrouter_ingest.py` when adding the next flagship.

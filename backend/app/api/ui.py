@@ -21,6 +21,12 @@ async def home(request: Request):
     return templates.TemplateResponse("home.html", {"request": request})
 
 
+@router.get("/gpu", response_class=HTMLResponse)
+async def gpu_page(request: Request):
+    """GPU rental-rate monitor — per-model $/GPU/hr, spot ratio, availability, 30d trend."""
+    return templates.TemplateResponse("gpu.html", {"request": request})
+
+
 @router.get("/signal/{raw_item_id}", response_class=HTMLResponse)
 async def signal_detail(raw_item_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     item = await db.get(RawItem, raw_item_id)

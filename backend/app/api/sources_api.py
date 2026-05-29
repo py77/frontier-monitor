@@ -57,6 +57,11 @@ async def trigger_ingest(source_id: str, db: AsyncSession = Depends(get_db)) -> 
     if src.kind == "enterprise_roi":
         from app.services.enterprise_roi_ingest import ingest_source
         return await ingest_source(source_id)
+    if src.kind == "gpu_rental":
+        from app.services.gpu_rental_ingest import ingest_source, recompute_aggregates
+        result = await ingest_source(source_id)
+        await recompute_aggregates()  # refresh headline cross-source series after a manual pull
+        return result
     raise HTTPException(status_code=400, detail=f"no ingester for kind={src.kind}")
 
 
@@ -69,6 +74,17 @@ async def backfill_anthropic_dates() -> dict:
     """
     from app.services.anthropic_html_ingest import backfill_published_at
     return await backfill_published_at()
+
+
+@router.post("/admin/backfill-anthropic-bodies")
+async def backfill_anthropic_bodies() -> dict:
+    """Re-fetch each anthropic_html / claude_blog raw_item and replace raw_text with body text.
+
+    Use after extending the ingest to capture article body content (instead of just
+    og:description). Idempotent — skips rows that already have raw_json.body_extracted=True.
+    """
+    from app.services.anthropic_html_ingest import backfill_body_text
+    return await backfill_body_text()
 
 
 @router.post("/sources/{source_id}/toggle")
