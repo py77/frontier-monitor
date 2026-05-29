@@ -233,6 +233,28 @@ code, pre {
 .verdict-steady { color: var(--warn); background: rgba(249,226,175,0.08); border: 1px solid rgba(249,226,175,0.25); }
 .verdict-low    { color: var(--neg);  background: rgba(243,139,168,0.08); border: 1px solid rgba(243,139,168,0.25); }
 
+/* Analyst verdict — full-width narrative synthesis, written by /refresh, sits above
+   the dimensions table. Markdown rendered client-side by mdToHtml() in home.html. */
+.verdict-block { margin: 0 0 20px; }
+.verdict-body {
+  color: var(--fg2);
+  font-size: var(--ts-sm);
+  line-height: 1.6;
+  max-width: 78ch;
+  padding: 6px 0 2px;
+}
+.verdict-body p { margin: 0 0 9px; }
+.verdict-body p:first-child { color: var(--fg1); font-weight: 600; font-size: var(--ts-base); }
+.verdict-body strong { color: var(--fg1); font-weight: 600; }
+.verdict-body code { font-size: var(--ts-xs); }
+.verdict-body .verdict-h {
+  color: var(--fg-label); font-size: var(--ts-xs); letter-spacing: 0.04em;
+  text-transform: uppercase; margin: 12px 0 4px;
+}
+.verdict-body ul.verdict-list { list-style: none; padding: 0; margin: 4px 0 9px; }
+.verdict-body ul.verdict-list li { padding: 1px 0 1px 16px; position: relative; }
+.verdict-body ul.verdict-list li::before { content: '·'; position: absolute; left: 3px; color: var(--fg-caption); }
+
 .delta {
   display: inline-block;
   font-size: var(--ts-xs);

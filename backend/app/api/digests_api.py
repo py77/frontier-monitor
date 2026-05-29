@@ -27,8 +27,16 @@ async def create_digest(body: DigestIn, db: AsyncSession = Depends(get_db)) -> d
 
 
 @router.get("/digests/latest")
-async def latest_digest(db: AsyncSession = Depends(get_db)) -> dict:
-    d = (await db.execute(select(Digest).order_by(desc(Digest.created_at)).limit(1))).scalar_one_or_none()
+async def latest_digest(period: str | None = None, db: AsyncSession = Depends(get_db)) -> dict:
+    """Latest stored markdown. Default = the daily memo; pass ?period=verdict for the
+    dashboard verdict (a different artifact sharing this table)."""
+    stmt = select(Digest)
+    if period is not None:
+        stmt = stmt.where(Digest.period == period)
+    else:
+        stmt = stmt.where(Digest.period != "verdict")
+    stmt = stmt.order_by(desc(Digest.created_at)).limit(1)
+    d = (await db.execute(stmt)).scalar_one_or_none()
     if not d:
         raise HTTPException(status_code=404, detail="no digests yet")
     return {"id": d.id, "period": d.period, "created_at": d.created_at.isoformat(), "markdown": d.markdown}

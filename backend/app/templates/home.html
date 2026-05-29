@@ -19,6 +19,11 @@
   <div class="loading">loading…</div>
 </section>
 
+<section id="verdict-block" class="verdict-block" hidden>
+  <div class="rule"><span>ANALYST VERDICT</span><span class="rule-fill">──────────────────────────────────────────────────────</span><span class="rule-right" id="verdict-asof"></span></div>
+  <div class="verdict-body" id="verdict-body"></div>
+</section>
+
 <div class="dim-shell">
   <div class="dim-main">
     <div class="rule"><span>DIMENSIONS</span><span class="rule-fill">────────────────────────────────────────────────────────────</span><span class="rule-right" id="dim-rule-right"></span></div>
@@ -330,6 +335,43 @@ function renderHeatmap(){
   });
 }
 
+/* Minimal markdown → HTML for the analyst verdict (bold, inline code, bullets,
+ * optional ## headings, paragraphs). Escape first, then apply inline marks. */
+function escapeHtml(s){ return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function inlineMd(s){
+  return escapeHtml(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+function mdToHtml(md){
+  const lines = (md || '').split('\n');
+  let html = '', list = null;
+  const flush = () => { if (list !== null){ html += '<ul class="verdict-list">' + list + '</ul>'; list = null; } };
+  for (const raw of lines){
+    const line = raw.trim();
+    if (!line){ flush(); continue; }
+    if (line.startsWith('## ')){ flush(); html += '<div class="verdict-h">' + inlineMd(line.slice(3)) + '</div>'; }
+    else if (line.startsWith('# ')){ flush(); html += '<div class="verdict-h">' + inlineMd(line.slice(2)) + '</div>'; }
+    else if (/^[-·*]\s+/.test(line)){ list = (list || '') + '<li>' + inlineMd(line.replace(/^[-·*]\s+/, '')) + '</li>'; }
+    else { flush(); html += '<p>' + inlineMd(line) + '</p>'; }
+  }
+  flush();
+  return html;
+}
+
+function renderVerdict(){
+  const v = STATE.scoreboard && STATE.scoreboard.analyst_verdict;
+  const block = document.getElementById('verdict-block');
+  if (!v || !v.markdown){ block.hidden = true; return; }
+  block.hidden = false;
+  document.getElementById('verdict-body').innerHTML = mdToHtml(v.markdown);
+  const asof = document.getElementById('verdict-asof');
+  if (v.created_at){
+    const d = new Date(v.created_at);
+    asof.textContent = 'as of ' + d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+  } else { asof.textContent = ''; }
+}
+
 function renderHeadline(){
   const s = STATE.scoreboard;
   const verdictClass = s.verdict === 'ACCELERATING' ? 'verdict-accel'
@@ -402,6 +444,7 @@ async function renderAlerts(){
 function renderAll(){
   if (!STATE.scoreboard) return;
   renderHeadline();
+  renderVerdict();
   renderMeta();
   renderDimTable();
   renderHeatmap();

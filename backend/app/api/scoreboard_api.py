@@ -6,7 +6,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import RawItem, Signal, TimeseriesPoint
+from app.models import Digest, RawItem, Signal, TimeseriesPoint
 from app.services.score_engine import (
     DIMENSION_WEIGHTS,
     compute_scores,
@@ -82,6 +82,22 @@ async def scoreboard(db: AsyncSession = Depends(get_db)) -> dict:
         }
         for s, r in scored[:8]
     ]
+
+    # Analyst verdict: the narrative synthesis written by /refresh (period="verdict"),
+    # rendered full-width above the dimensions table. Latest one wins.
+    verdict_row = (
+        await db.execute(
+            select(Digest)
+            .where(Digest.period == "verdict")
+            .order_by(desc(Digest.created_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    state["analyst_verdict"] = (
+        {"markdown": verdict_row.markdown, "created_at": verdict_row.created_at.isoformat()}
+        if verdict_row
+        else None
+    )
 
     return state
 

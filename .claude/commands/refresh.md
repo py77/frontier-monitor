@@ -93,9 +93,36 @@ Optional `$ARGUMENTS` filters by dimension — pass it as `&pillar=<dim>` (the A
 
 4. After processing, report counts (scored / skipped / errors) and the **top 3 highest-importance** items with their `tldr` and `direction`.
 
+5. **Write the dashboard verdict and POST it — every run, unconditionally.** This is the narrative answer to the product's central question — *"Are we approaching economically transformative AI faster than consensus expects?"* — rendered full-width above the dimensions table and overwritten every run (latest wins). Do this even if **zero items were pending**: re-derive it from current `$sb` state so the dashboard never shows a stale read.
+
+   Pull current state for grounding:
+   ```powershell
+   $sb = Invoke-RestMethod http://localhost:8765/api/scoreboard
+   ```
+
+   Compose ~130–170 words of markdown as 3–4 short paragraphs:
+   - **First line** = one **bold** headline sentence (the verdict in a breath).
+   - Then: what's **accelerating** (cite the highest-importance signals you scored this run), what's **lagging**, and the one thing to **watch** next.
+   - Lead each paragraph with the claim. Bold the paragraph lead-ins. No headings needed.
+
+   POST it (reuses the digests table under the reserved period `verdict`):
+   ```powershell
+   $md = @'
+   **<headline verdict sentence>**
+
+   **Accelerating —** <…>
+
+   **Lagging —** <…>
+
+   **Watch —** <…>
+   '@
+   $body = @{ period = 'verdict'; markdown = $md } | ConvertTo-Json -Compress
+   Invoke-RestMethod -Method POST -ContentType 'application/json' -Body $body http://localhost:8765/api/digests
+   ```
+
 ## Hard rules
 
-- **Never invent numbers**. Every numeric claim in `tldr` must trace to `citations` from the same raw_item.
+- **Never invent numbers**. Every numeric claim in `tldr` — and in the step-5 verdict — must trace to a `citation` you posted this run or a value in `$sb` (index, dimension scores). The verdict is analyst synthesis, not new data.
 - **Never call any other API** (no Anthropic API, no web search). Work only from the `/api/pending` content.
 - **Stop at 50 items**. If more pending, the user re-runs `/refresh`.
 - **`analyst_version` is always `v1`** unless the user explicitly passes a different version.

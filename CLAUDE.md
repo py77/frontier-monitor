@@ -88,9 +88,9 @@ backend/app/
     ui.py                       /, /signal/{id}, /sources
     signals_api.py              /api/pending, /api/signals (Claude analyst surface)
     sources_api.py              /api/sources, /api/ingest/{id}, /api/sources/{id}/toggle
-    scoreboard_api.py           /api/scoreboard (drives the home page)
+    scoreboard_api.py           /api/scoreboard (drives the home page; carries analyst_verdict)
     alerts_api.py               /api/alerts
-    digests_api.py              /api/digests, /api/digests/latest
+    digests_api.py              /api/digests, /api/digests/latest (?period=verdict for the dashboard verdict)
     baselines_api.py            GET /api/baselines, POST /api/baselines/snapshot
     gpu_api.py                  GET /api/gpu/rates (drives the /gpu page)
   models/                       SQLAlchemy ORM
@@ -160,6 +160,10 @@ Every 30-day window in the system (dimension `signal_sum`, per-dimension `headli
 Headlines additionally filter by `Signal.pillar == dim` (the analyst-assigned primary dimension) so cross-tagged signals aren't shown twice. The `signal_sum` calculation stays cross-cutting — a genuinely cross-dim signal still inflates multiple dimensions' cadence.
 
 `/refresh` and `/memo` are user-typed slash commands in Claude Code. They are not invokable from inside a session.
+
+### The analyst verdict (dashboard headline synthesis)
+
+`/refresh` step 5 writes a short narrative verdict — the prose answer to *"are we accelerating faster than consensus?"* — and POSTs it to `/api/digests` under the reserved `period="verdict"`, reusing the `digests` table rather than a new model. `/api/scoreboard` attaches the latest one as `analyst_verdict`; `home.html` renders it full-width above the dimensions table (markdown via a tiny client-side `mdToHtml`). `GET /api/digests/latest` **excludes** `period="verdict"` by default so the daily `/memo` stays separate — pass `?period=verdict` to fetch it. Same anti-fabrication rule as signals: every number traces to a `citation` from that run or a `/api/scoreboard` value. It overwrites every run (latest wins) and fires even when zero items were pending, so the dashboard never goes stale.
 
 ### Unattended daily /refresh
 
