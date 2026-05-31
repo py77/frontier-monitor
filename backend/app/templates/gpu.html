@@ -12,6 +12,11 @@
   <button class="sync-btn" id="sync-btn" type="button">↻ refresh</button>
 </section>
 
+<section id="verdict-block" class="verdict-block verdict-gpu" hidden>
+  <div class="rule"><span>GPU MARKET VERDICT</span><span class="rule-fill">──────────────────────────────────────────────────────</span><span class="rule-right" id="verdict-asof"></span></div>
+  <div class="verdict-body" id="verdict-body"></div>
+</section>
+
 <div>
   <div class="rule"><span>DATACENTER GPUs</span><span class="rule-fill">────────────────────────────────────────────</span><span class="rule-right">$/GPU/hr · on-demand</span></div>
   <table class="dim-table" id="dc-table">
@@ -52,17 +57,30 @@
   </table>
 </div>
 
+<div class="freshness" id="freshness">
+  <span class="fresh-title">datasets updated</span>
+</div>
+
 <p style="color:var(--fg-caption); font-size:var(--ts-micro); margin-top:12px;">
   <b>mkt blend</b> = median across live marketplace + neocloud venues (Akash uses its supply-weighted average).
   <b>consensus</b> = ComputePrices cross-provider aggregate; <b>hypersc.</b> = Azure — both shown for context but kept OUT of the blend (3–6× different tiers).
   <b>spot/od</b> = bid ÷ on-demand; toward 1.0 = tight interruptible capacity. <b>avail</b> = live available GPU units (0 = sold out).
   30d sparklines build forward (~1 point/day) — marketplaces don't publish history, so there's nothing to backfill; the collector runs every 6h.
+  GPUs with no marketplace blend (e.g. GB200, B300) trend on their <b>consensus</b> or <b>hypersc.</b> series instead — tagged under the line. Hover any trend for the price on each day.
 </p>
 
 <script>
 const MIN_DAYS_FOR_LINE = 3;
+const SPARK_W = 140, SPARK_H = 28;
 
-function sparklineSVG(points, width=140, height=28) {
+/* Hidden hover marker (vertical guide + dot) injected into every drawn sparkline.
+   wireSparklines() moves it to the nearest point and shows the tooltip. */
+function sparkCursor(h) {
+  return `<line class="spark-cur-line" x1="0" y1="0" x2="0" y2="${h}" stroke="var(--blue)" stroke-width="0.75" opacity="0"/>`
+       + `<circle class="spark-cur-dot" r="2.5" fill="var(--blue)" opacity="0"/>`;
+}
+
+function sparklineSVG(points, width=SPARK_W, height=SPARK_H) {
   const w = width, h = height;
   const padY = h * 0.15;
   const usableH = h - padY * 2;
@@ -75,18 +93,60 @@ function sparklineSVG(points, width=140, height=28) {
   const xy = points.map((p, i) => {
     const x = points.length > 1 ? (i / (points.length - 1)) * (w-2) + 1 : w / 2;
     const y = padY + (1 - (p.value - min) / range) * usableH;
-    return { x, y };
+    return { x: +x.toFixed(1), y: +y.toFixed(1), v: p.value, d: p.day };
   });
+  // Embed the drawn geometry so hover-mapping lands exactly on the rendered line.
+  const data = `data-pts='${JSON.stringify(xy)}'`;
   if (points.length < MIN_DAYS_FOR_LINE) {
-    const dots = xy.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="currentColor"/>`).join('');
-    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${dots}<text x="${w-2}" y="${h-2}" text-anchor="end" fill="#6c7086" font-size="9" font-family="JetBrains Mono, monospace">${points.length}d</text></svg>`;
+    const dots = xy.map(p => `<circle cx="${p.x}" cy="${p.y}" r="2" fill="currentColor"/>`).join('');
+    return `<svg class="spark" ${data} width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${dots}<text x="${w-2}" y="${h-2}" text-anchor="end" fill="#6c7086" font-size="9" font-family="JetBrains Mono, monospace">${points.length}d</text>${sparkCursor(h)}</svg>`;
   }
-  const path = xy.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const path = xy.map(p => `${p.x},${p.y}`).join(' ');
   const last = xy[xy.length - 1];
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  return `<svg class="spark" ${data} width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
     <polyline points="${path}" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>
-    <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="2" fill="currentColor"/>
+    <circle cx="${last.x}" cy="${last.y}" r="2" fill="currentColor"/>
+    ${sparkCursor(h)}
   </svg>`;
+}
+
+/* Single shared tooltip; nearest-point hover handling reattached after every render. */
+let _sparkTip = null;
+function sparkTip() {
+  if (!_sparkTip) {
+    _sparkTip = document.createElement('div');
+    _sparkTip.className = 'spark-tip';
+    document.body.appendChild(_sparkTip);
+  }
+  return _sparkTip;
+}
+function wireSparklines() {
+  const tip = sparkTip();
+  document.querySelectorAll('svg.spark').forEach(svg => {
+    let pts;
+    try { pts = JSON.parse(svg.getAttribute('data-pts')); } catch (e) { return; }
+    if (!pts || !pts.length) return;
+    const line = svg.querySelector('.spark-cur-line');
+    const dot  = svg.querySelector('.spark-cur-dot');
+    svg.addEventListener('mousemove', (e) => {
+      const rect = svg.getBoundingClientRect();
+      // Map cursor px → viewBox units (rendered width may differ from the 140 viewBox).
+      const vbX = (e.clientX - rect.left) / rect.width * SPARK_W;
+      let best = pts[0], bd = Math.abs(pts[0].x - vbX);
+      for (const p of pts) { const dd = Math.abs(p.x - vbX); if (dd < bd) { bd = dd; best = p; } }
+      if (line) { line.setAttribute('x1', best.x); line.setAttribute('x2', best.x); line.setAttribute('opacity', '0.45'); }
+      if (dot)  { dot.setAttribute('cx', best.x); dot.setAttribute('cy', best.y); dot.setAttribute('opacity', '1'); }
+      tip.innerHTML = `<b>$${best.v.toFixed(2)}</b><span>${best.d}</span>`;
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX + 14) + 'px';
+      tip.style.top  = (e.clientY - 12) + 'px';
+    });
+    svg.addEventListener('mouseleave', () => {
+      if (line) line.setAttribute('opacity', '0');
+      if (dot)  dot.setAttribute('opacity', '0');
+      tip.style.display = 'none';
+    });
+  });
 }
 
 /* Price WoW: cheaper = green (more supply), pricier = red (tighter). */
@@ -100,12 +160,67 @@ function pad2(n){ return n < 10 ? '0' + n : '' + n; }
 function nowHHMMSS(){ const d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()); }
 function todayYMD(){ const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
 
+/* Minimal markdown → HTML for the verdict (bold, inline code, bullets, ## headings,
+   paragraphs) — mirrors home.html so the GPU verdict renders identically. */
+function escapeHtml(s){ return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function inlineMd(s){
+  return escapeHtml(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+function mdToHtml(md){
+  const lines = (md || '').split('\n');
+  let html = '', list = null;
+  const flush = () => { if (list !== null){ html += '<ul class="verdict-list">' + list + '</ul>'; list = null; } };
+  for (const raw of lines){
+    const line = raw.trim();
+    if (!line){ flush(); continue; }
+    if (line.startsWith('## ')){ flush(); html += '<div class="verdict-h">' + inlineMd(line.slice(3)) + '</div>'; }
+    else if (line.startsWith('# ')){ flush(); html += '<div class="verdict-h">' + inlineMd(line.slice(2)) + '</div>'; }
+    else if (/^[-·*]\s+/.test(line)){ list = (list || '') + '<li>' + inlineMd(line.replace(/^[-·*]\s+/, '')) + '</li>'; }
+    else { flush(); html += '<p>' + inlineMd(line) + '</p>'; }
+  }
+  flush();
+  return html;
+}
+function renderVerdict(v){
+  const block = document.getElementById('verdict-block');
+  if (!v || !v.markdown){ block.hidden = true; return; }
+  block.hidden = false;
+  document.getElementById('verdict-body').innerHTML = mdToHtml(v.markdown);
+  const asof = document.getElementById('verdict-asof');
+  if (v.created_at){ const d = new Date(v.created_at); asof.textContent = 'as of ' + d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
+  else { asof.textContent = ''; }
+}
+
 function fmtSources(srcs) {
   const entries = Object.entries(srcs || {});
   if (!entries.length) return '<span style="color:var(--fg-caption);">—</span>';
   return entries.sort((a,b)=>a[1]-b[1])
     .map(([s,v]) => `<span class="kv"><span class="kv-label">${s}</span><span class="kv-value">$${v.toFixed(2)}</span></span>`)
     .join('');
+}
+
+/* No marketplace blend → the line tracks a different price tier. Say which, so it isn't
+   read as a blend. Blend trends get no tag (the column header already says so). */
+const BASIS_LABEL = { consensus: 'consensus', hyperscaler: 'hypersc.' };
+function basisTag(m) {
+  if (!m.sparkline || !m.sparkline.length) return '';
+  const lbl = BASIS_LABEL[m.sparkline_basis];
+  return lbl ? `<span class="spark-basis">${lbl}</span>` : '';
+}
+
+/* ISO → "MM-DD HH:MM" in the viewer's local tz. */
+function fmtStamp(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return pad2(d.getMonth()+1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+function fmtDay(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d) ? null : d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
 }
 
 function rowHTML(m) {
@@ -124,7 +239,7 @@ function rowHTML(m) {
     <td class="num">${hyper}</td>
     <td class="num">${ratio}</td>
     <td class="num">${avail}</td>
-    <td><span style="color:var(--fg2);">${sparklineSVG(m.sparkline, 140, 28)}</span></td>
+    <td><span style="color:var(--fg2);">${sparklineSVG(m.sparkline)}</span>${basisTag(m)}</td>
     <td><div class="dim-headlines">${fmtSources(m.sources)}</div></td>
   </tr>`;
 }
@@ -136,13 +251,27 @@ function renderTable(id, rows) {
     : '<tr><td colspan="9" class="empty">no data yet — trigger an ingest (POST /api/ingest/gpu_akash)</td></tr>';
 }
 
+function renderFreshness(updated) {
+  const el = document.getElementById('freshness');
+  const entries = Object.entries(updated || {});  // API pre-sorts newest-first
+  const items = entries.length
+    ? entries.map(([s, iso]) =>
+        `<span class="fresh-item"><span class="src">${s}</span><span class="ts">${fmtStamp(iso)}</span></span>`).join('')
+    : '<span class="fresh-item" style="color:var(--fg-caption);">no data yet</span>';
+  el.innerHTML = '<span class="fresh-title">datasets updated</span>' + items;
+}
+
 async function load() {
   const res = await fetch('/api/gpu/rates');
   const data = await res.json();
   const models = data.models || [];
   renderTable('dc-table', models.filter(m => m.class === 'datacenter'));
   renderTable('consumer-table', models.filter(m => m.class === 'consumer'));
-  document.getElementById('meta-date').textContent = todayYMD();
+  wireSparklines();  // reattach hover handlers — renderTable replaced the SVGs
+  renderVerdict(data.verdict);
+  renderFreshness(data.sources_updated);
+  // Real market date from the data, not the viewer's wall clock.
+  document.getElementById('meta-date').textContent = fmtDay(data.data_as_of) || todayYMD();
   document.getElementById('meta-models').textContent = models.length;
   document.getElementById('meta-sources').textContent =
     new Set(models.flatMap(m => Object.keys(m.sources || {}))).size;

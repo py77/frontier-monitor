@@ -100,24 +100,28 @@ Optional `$ARGUMENTS` filters by dimension — pass it as `&pillar=<dim>` (the A
    $sb = Invoke-RestMethod http://localhost:8765/api/scoreboard
    ```
 
-   Compose ~130–170 words of markdown as 3–4 short paragraphs:
-   - **First line** = one **bold** headline sentence (the verdict in a breath).
-   - Then: what's **accelerating** (cite the highest-importance signals you scored this run), what's **lagging**, and the one thing to **watch** next.
-   - Lead each paragraph with the claim. Bold the paragraph lead-ins. No headings needed.
+   Compose it **concise and scannable, NOT prose** — the page renders a headline + a bullet
+   list in space-using columns. Total **≤ 95 words**:
+   - **First line** = one **bold** headline sentence: the index level + WoW, above/below the 50 baseline, and the one-breath read (what's racing vs lagging).
+   - Then **4–5 bullets** (`- `), each a single line led by a **bold** label + em-dash: the strongest dimension, supply side, the weakest dimensions, the laggard(s), and one **Watch** bullet. **Lead each with the dimension score and number.** No multi-sentence bullets, no hedging.
+   - Bold the key figures; `code` is fine; no `##` headings.
 
-   POST it (reuses the digests table under the reserved period `verdict`):
+   Good bullet: `**Strongest — Infrastructure 50.0** (+15.0 WoW): merchant AI silicon **$65.4B**, +71% YoY.`
+   Bad bullet (verbose): "Infrastructure was the strongest mover this week, jumping fifteen points as merchant silicon revenue…"
+
+   POST it (reuses the digests table under the reserved period `verdict`; UTF-8 so `—`, `−`, `$` survive):
    ```powershell
    $md = @'
-   **<headline verdict sentence>**
+   **<headline: index + WoW + baseline + one-breath read>**
 
-   **Accelerating —** <…>
-
-   **Lagging —** <…>
-
-   **Watch —** <…>
+   - **Strongest — <dim score>** (<wow>): <number-first finding>
+   - **Supply — <dim score>** (<wow>): <number-first finding>
+   - **Weakest — <dim score>** (<wow>): <…>
+   - **Dragging — <dim score>** (<wow>): <…>
+   - **Watch** — <the one tell to track next>
    '@
-   $body = @{ period = 'verdict'; markdown = $md } | ConvertTo-Json -Compress
-   Invoke-RestMethod -Method POST -ContentType 'application/json' -Body $body http://localhost:8765/api/digests
+   $bytes = [System.Text.Encoding]::UTF8.GetBytes((@{ period = 'verdict'; markdown = $md } | ConvertTo-Json -Depth 3))
+   Invoke-RestMethod -Method POST -ContentType 'application/json; charset=utf-8' -Body $bytes http://localhost:8765/api/digests
    ```
 
 ## Hard rules

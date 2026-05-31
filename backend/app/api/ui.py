@@ -15,6 +15,16 @@ router = APIRouter()
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
+# Cache-bust the stylesheet link by its file mtime so a CSS edit is picked up on the next
+# page load. StaticFiles sends no Cache-Control, so browsers heuristically serve a stale
+# app.css off Last-Modified without revalidating — a versioned href sidesteps that. Computed
+# at import (i.e. per container start / uvicorn reload), which is exactly when the CSS can change.
+try:
+    _asset_v = str(int((BASE_DIR / "static" / "css" / "app.css").stat().st_mtime))
+except OSError:
+    _asset_v = "0"
+templates.env.globals["asset_v"] = _asset_v
+
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):

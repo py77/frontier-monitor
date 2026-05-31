@@ -240,10 +240,9 @@ code, pre {
   color: var(--fg2);
   font-size: var(--ts-sm);
   line-height: 1.6;
-  max-width: 78ch;
   padding: 6px 0 2px;
 }
-.verdict-body p { margin: 0 0 9px; }
+.verdict-body p { margin: 0 0 9px; max-width: 100ch; }
 .verdict-body p:first-child { color: var(--fg1); font-weight: 600; font-size: var(--ts-base); }
 .verdict-body strong { color: var(--fg1); font-weight: 600; }
 .verdict-body code { font-size: var(--ts-xs); }
@@ -251,8 +250,18 @@ code, pre {
   color: var(--fg-label); font-size: var(--ts-xs); letter-spacing: 0.04em;
   text-transform: uppercase; margin: 12px 0 4px;
 }
-.verdict-body ul.verdict-list { list-style: none; padding: 0; margin: 4px 0 9px; }
-.verdict-body ul.verdict-list li { padding: 1px 0 1px 16px; position: relative; }
+/* Findings flow into space-using columns (≈2 on a wide screen, 1 when narrow) so the
+   verdict reads at a glance instead of leaving the right half empty. Applies to both the
+   home composite and the /gpu verdict — keep verdicts terse and bulleted. */
+.verdict-body ul.verdict-list {
+  list-style: none; padding: 0; margin: 8px 0 9px;
+  column-width: 32rem; column-gap: 48px;
+}
+.verdict-body ul.verdict-list li {
+  padding: 3px 0 3px 16px; position: relative;
+  break-inside: avoid;          /* keep each finding whole within a column */
+  line-height: 1.5;
+}
 .verdict-body ul.verdict-list li::before { content: '·'; position: absolute; left: 3px; color: var(--fg-caption); }
 
 .delta {
@@ -533,3 +542,52 @@ table.sources code { background: transparent; color: var(--fg2); padding: 0; }
 .badge.ok    { color: var(--pos); border: 1px solid rgba(166,227,161,0.30); }
 .badge.warn  { color: var(--warn); border: 1px solid rgba(249,226,175,0.30); }
 .badge.muted { color: var(--fg-caption); border: 1px solid var(--hairline); }
+
+/* ============================================================
+   GPU sparkline — hover tooltip + per-dataset freshness
+   ============================================================ */
+
+svg.spark { cursor: crosshair; display: block; }
+
+/* Which price tier the 30d line reflects when there's no marketplace blend. */
+.spark-basis {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--fg-caption);
+  text-transform: lowercase;
+}
+
+/* Floating tooltip: price + date for the hovered point. */
+.spark-tip {
+  position: fixed;
+  z-index: 60;
+  display: none;
+  pointer-events: none;
+  background: var(--bg-deep);
+  border: 1px solid var(--hairline);
+  padding: 3px 7px;
+  font-family: var(--mono);
+  font-size: var(--ts-xs);
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+  font-variant-numeric: tabular-nums;
+}
+.spark-tip b    { color: var(--blue); margin-right: 8px; font-weight: 600; }
+.spark-tip span { color: var(--fg-caption); }
+
+/* Per-dataset update strip — one explicit last-updated time per source. */
+.freshness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline-soft);
+  font-size: var(--ts-micro);
+}
+.freshness .fresh-title { color: var(--fg-label); text-transform: uppercase; letter-spacing: 0.05em; }
+.freshness .fresh-item { color: var(--fg3); white-space: nowrap; }
+.freshness .fresh-item .src { color: var(--fg2); }
+.freshness .fresh-item .ts  { color: var(--fg-caption); margin-left: 6px; }
