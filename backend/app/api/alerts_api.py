@@ -33,3 +33,13 @@ async def list_alerts(
         }
         for a in rows
     ]
+
+
+@router.post("/alerts/scan")
+async def trigger_scan() -> dict:
+    """Run the threshold scan on demand (the scheduler also runs it every 15 min). Returns
+    how many new alerts fired — useful to verify the engine after a rule change."""
+    from app.services.alerts_engine import scan_and_fire
+
+    fired = await scan_and_fire()
+    return {"fired": fired}

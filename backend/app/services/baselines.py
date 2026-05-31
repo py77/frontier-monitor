@@ -52,6 +52,22 @@ def is_uninitialized(b: dict, dim: str, key: str) -> bool:
     return b.get(dim, {}).get(key) is None
 
 
+def baseline_captured_at() -> datetime | None:
+    """When the baselines were last (re-)snapshotted, from `_meta.captured_at`.
+
+    Used by the alerts engine to suppress WoW deltas whose window straddles a re-snapshot:
+    every dimension resets to 50 at that instant, so a delta spanning it is a rebase
+    artifact, not real movement. Returns None if unset/unreadable.
+    """
+    if not CONFIG_PATH.exists():
+        return None
+    try:
+        ts = json.loads(CONFIG_PATH.read_text(encoding="utf-8")).get("_meta", {}).get("captured_at")
+        return datetime.fromisoformat(ts) if ts else None
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def save_baselines(baselines: dict, *, captured_at: datetime | None = None) -> None:
     """Persist baselines + meta. Container mount may be read-only; we write the host path
     via the resolved CONFIG_PATH (works in dev with bind-mount; on read-only mount the
