@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.config import settings
+
 from app.database import async_session
 from app.models import RawItem, Signal, TimeseriesPoint
 from app.services.baselines import (
@@ -399,7 +401,7 @@ async def collect_all_raws() -> tuple[dict[str, dict], dict[str, list[str]]]:
             await db.execute(
                 select(Signal)
                 .join(RawItem, Signal.raw_item_id == RawItem.id)
-                .where(Signal.analyst_version == "v1", article_ts >= cutoff)
+                .where(Signal.analyst_version == settings.analyst_version, article_ts >= cutoff)
             )
         ).scalars().all()
 

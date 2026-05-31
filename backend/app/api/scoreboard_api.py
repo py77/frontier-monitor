@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models import Digest, RawItem, Signal, TimeseriesPoint
 from app.services.score_engine import (
@@ -60,7 +61,7 @@ async def scoreboard(db: AsyncSession = Depends(get_db)) -> dict:
         await db.execute(
             select(Signal, RawItem)
             .join(RawItem, Signal.raw_item_id == RawItem.id)
-            .where(Signal.analyst_version == "v1", article_ts >= cutoff)
+            .where(Signal.analyst_version == settings.analyst_version, article_ts >= cutoff)
             .order_by(desc(article_ts))
         )
     ).all()
