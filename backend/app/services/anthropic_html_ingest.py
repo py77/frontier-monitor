@@ -14,6 +14,7 @@ published_at via this fallback chain: og meta `article:published_time` → JSON-
 lastmod because that field is unreliable.
 """
 import hashlib
+import html as html_module
 import json
 import logging
 import re
@@ -130,6 +131,51 @@ def resolve_published_at(html: str, source_id: str) -> datetime | None:
     return _extract_body_dateline(html)
 
 
+_SCRIPT_STYLE_SVG_RE = re.compile(
+    r"<(script|style|svg|noscript)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL
+)
+_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"\s+")
+_ARTICLE_BLOCK_RE = re.compile(r"<article\b[^>]*>(.*?)</article>", re.IGNORECASE | re.DOTALL)
+_MAIN_BLOCK_RE = re.compile(r"<main\b[^>]*>(.*?)</main>", re.IGNORECASE | re.DOTALL)
+
+# Soft cap on body text length. Long enough for analyst to read substance; short enough that
+# 50 items × this size fit comfortably in /api/pending payloads.
+BODY_TEXT_MAX = 20000
+
+
+def _strip_html(fragment: str) -> str:
+    """Remove scripts/styles/svgs, strip remaining tags, decode entities, collapse whitespace."""
+    cleaned = _SCRIPT_STYLE_SVG_RE.sub(" ", fragment)
+    cleaned = _TAG_RE.sub(" ", cleaned)
+    cleaned = html_module.unescape(cleaned)
+    cleaned = _WS_RE.sub(" ", cleaned).strip()
+    return cleaned
+
+
+def extract_body_text(html: str) -> str | None:
+    """Pull substantive article prose out of an article page.
+
+    Multi-strategy: prefer the longest `<article>` block (anthropic.com has 2 — hero + body —
+    so longest wins), else fall back to `<main>`. Strips tags and collapses whitespace.
+    Returns None if nothing meaningful was extractable (caller should fall back to og:description).
+    """
+    candidates: list[str] = []
+    for m in _ARTICLE_BLOCK_RE.finditer(html):
+        candidates.append(m.group(1))
+    if not candidates:
+        m = _MAIN_BLOCK_RE.search(html)
+        if m:
+            candidates.append(m.group(1))
+    if not candidates:
+        return None
+    best = max(candidates, key=len)
+    text = _strip_html(best)
+    if len(text) < 200:
+        return None
+    return text[:BODY_TEXT_MAX]
+
+
 async def _fetch(client: httpx.AsyncClient, url: str) -> str | None:
     try:
         r = await client.get(url, timeout=30.0, follow_redirects=True)
@@ -240,8 +286,11 @@ async def ingest_source(source_id: str) -> dict:
                 if not html:
                     continue
                 title = (_meta_content(html, "og:title") or url.rsplit("/", 1)[-1]).strip()[:1000]
-                desc = (_meta_content(html, "og:description") or "")[:50000]
+                desc = (_meta_content(html, "og:description") or "")[:2000]
+                body = extract_body_text(html)
                 published = resolve_published_at(html, source_id)
+                # raw_text is what the analyst reads via /api/pending — prefer body, fall back to og:desc.
+                raw_text = body or desc
 
                 stmt = pg_insert(RawItem).values(
                     id=ids_for_urls[url],
@@ -252,8 +301,12 @@ async def ingest_source(source_id: str) -> dict:
                     author=None,
                     published_at=published,
                     fetched_at=now,
-                    raw_text=desc,
-                    raw_json={"og_description": desc, "discovery": source_id},
+                    raw_text=raw_text,
+                    raw_json={
+                        "og_description": desc,
+                        "discovery": source_id,
+                        "body_extracted": body is not None,
+                    },
                 ).on_conflict_do_nothing(index_elements=["id"])
                 result = await db.execute(stmt)
                 if result.rowcount:
@@ -270,6 +323,57 @@ async def ingest_source(source_id: str) -> dict:
                 "new_articles": len(new_urls),
                 "inserted": inserted,
             }
+
+
+async def backfill_body_text(source_ids: list[str] | None = None) -> dict:
+    """Re-fetch each anthropic/claude_blog raw_item and replace raw_text with body text.
+
+    Use after extending the ingest to capture body. Idempotent — items that already have
+    body-extracted content (raw_json.body_extracted=True) are skipped. Items where the
+    extractor can't pull body text keep their existing raw_text (typically the og:description).
+    """
+    targets = source_ids or list(DISCOVERERS.keys())
+    async with async_session() as db:
+        rows = (
+            await db.execute(
+                select(RawItem.id, RawItem.url, RawItem.source_id, RawItem.raw_json)
+                .where(RawItem.source_id.in_(targets))
+            )
+        ).all()
+
+        updated = 0
+        already_done = 0
+        unresolved = 0
+        async with httpx.AsyncClient(headers={"User-Agent": UA}) as client:
+            for raw_id, url, source_id, raw_json in rows:
+                if isinstance(raw_json, dict) and raw_json.get("body_extracted"):
+                    already_done += 1
+                    continue
+                if not url:
+                    unresolved += 1
+                    continue
+                html = await _fetch(client, url)
+                if not html:
+                    unresolved += 1
+                    continue
+                body = extract_body_text(html)
+                if not body:
+                    unresolved += 1
+                    continue
+                item = await db.get(RawItem, raw_id)
+                if item:
+                    item.raw_text = body
+                    new_json = dict(item.raw_json) if isinstance(item.raw_json, dict) else {}
+                    new_json["body_extracted"] = True
+                    item.raw_json = new_json
+                    updated += 1
+            await db.commit()
+        return {
+            "scanned": len(rows),
+            "updated": updated,
+            "already_done": already_done,
+            "unresolved": unresolved,
+        }
 
 
 async def backfill_published_at(source_ids: list[str] | None = None) -> dict:
