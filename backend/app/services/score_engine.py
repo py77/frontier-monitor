@@ -146,7 +146,15 @@ async def _ticker_latest_yoy(db, series: str) -> tuple[float, float] | None:
 
 # ─── Per-dimension RAW collectors (return raw inputs + headlines) ─────────────────────
 
-async def _capability_raw(recent_signals: list[Signal]) -> tuple[dict, list[str]]:
+def _headline(text: str, signal: Signal | None = None) -> dict:
+    """One headline entry. Signal-derived headlines carry the source article's
+    raw_item_id so the dashboard can link to it (→ /signal/{id} → "source ↗");
+    metric-derived ones (merchant silicon, capex, ROI%, $/MTok, GW) have no article,
+    so raw_item_id is None and the UI renders them as plain text."""
+    return {"text": text, "raw_item_id": signal.raw_item_id if signal else None}
+
+
+async def _capability_raw(recent_signals: list[Signal]) -> tuple[dict, list[dict]]:
     # signal_sum stays cross-cutting (a cross-tagged signal genuinely contributes to
     # multiple dimensions' cadence). Headlines filter to s.pillar so a signal only
     # appears under its primary dimension — no duplicates across panels.
@@ -157,11 +165,11 @@ async def _capability_raw(recent_signals: list[Signal]) -> tuple[dict, list[str]
         and float(s.payload.get("importance_0_5", 0) or 0) >= 2
     ]
     matched.sort(key=lambda s: float(s.payload.get("importance_0_5", 0) or 0), reverse=True)
-    headlines = [s.payload["tldr"] for s in matched[:2] if s.payload.get("tldr")]
+    headlines = [_headline(s.payload["tldr"], s) for s in matched[:2] if s.payload.get("tldr")]
     return {"signal_sum": sig_sum}, headlines
 
 
-async def _recursive_ai_raw(recent_signals: list[Signal]) -> tuple[dict, list[str]]:
+async def _recursive_ai_raw(recent_signals: list[Signal]) -> tuple[dict, list[dict]]:
     sig_sum = sum(_signal_score(s.payload, DIMENSION_TAGS["recursive_ai"]) for s in recent_signals)
     matched = [
         s for s in recent_signals
@@ -169,12 +177,12 @@ async def _recursive_ai_raw(recent_signals: list[Signal]) -> tuple[dict, list[st
         and float(s.payload.get("importance_0_5", 0)) >= 3
     ]
     matched.sort(key=lambda s: float(s.payload.get("importance_0_5", 0) or 0), reverse=True)
-    headlines = [s.payload.get("tldr") or "" for s in matched[:2] if s.payload.get("tldr")]
+    headlines = [_headline(s.payload["tldr"], s) for s in matched[:2] if s.payload.get("tldr")]
     return {"signal_sum": sig_sum}, headlines
 
 
-async def _infrastructure_raw(db, recent_signals: list[Signal]) -> tuple[dict, list[str]]:
-    headlines: list[str] = []
+async def _infrastructure_raw(db, recent_signals: list[Signal]) -> tuple[dict, list[dict]]:
+    headlines: list[dict] = []
     yoy_weighted_pct: float | None = None
     per_ticker: list[tuple[str, float, float]] = []
     for tkr, series in _MERCHANT_AI_SERIES.items():
@@ -186,10 +194,10 @@ async def _infrastructure_raw(db, recent_signals: list[Signal]) -> tuple[dict, l
         total_dollars = sum(latest for _, latest, _ in per_ticker)
         yoy_weighted_pct = sum(latest * yoy for _, latest, yoy in per_ticker) / total_dollars
         bits = " · ".join(f"{t} ${m/1000:.1f}B {y:+.0f}%" for t, m, y in per_ticker)
-        headlines.append(
+        headlines.append(_headline(
             f"Merchant AI silicon ${total_dollars/1000:.1f}B (latest), {yoy_weighted_pct:+.0f}% YoY weighted"
-        )
-        headlines.append(bits)
+        ))
+        headlines.append(_headline(bits))
 
     gw_total = sum(
         _extract_gigawatts(s.payload)
@@ -197,7 +205,7 @@ async def _infrastructure_raw(db, recent_signals: list[Signal]) -> tuple[dict, l
         if set(s.payload.get("pillar_tags") or []) & DIMENSION_TAGS["infrastructure"]
     )
     if gw_total > 0:
-        headlines.append(f"Power commitments (30d): {gw_total:.1f} GW total")
+        headlines.append(_headline(f"Power commitments (30d): {gw_total:.1f} GW total"))
 
     sig_sum = sum(_signal_score(s.payload, DIMENSION_TAGS["infrastructure"]) for s in recent_signals)
     return {
@@ -224,26 +232,26 @@ async def _inference_cost_raw(db, recent_signals: list[Signal]) -> tuple[dict, l
         )
     ).first()
 
-    headlines: list[str] = []
+    headlines: list[dict] = []
     median: float | None = None
     if median_row:
         median = float(median_row.value)
         if min_row:
-            headlines.append(f"frontier median ${median:.2f}/MTok · cheapest ${float(min_row.value):.2f}/MTok")
+            headlines.append(_headline(f"frontier median ${median:.2f}/MTok · cheapest ${float(min_row.value):.2f}/MTok"))
         else:
-            headlines.append(f"frontier median ${median:.2f}/MTok")
+            headlines.append(_headline(f"frontier median ${median:.2f}/MTok"))
     else:
-        headlines.append("OpenRouter pricing pending")
+        headlines.append(_headline("OpenRouter pricing pending"))
 
     matched = [s for s in recent_signals if s.pillar == "inference_cost"]
     if matched and matched[0].payload.get("tldr"):
-        headlines.append(matched[0].payload["tldr"])
+        headlines.append(_headline(matched[0].payload["tldr"], matched[0]))
 
     return {"frontier_median_usd_mtok": median}, headlines
 
 
-async def _hyperscaler_raw(db, recent_signals: list[Signal]) -> tuple[dict, list[str]]:
-    headlines: list[str] = []
+async def _hyperscaler_raw(db, recent_signals: list[Signal]) -> tuple[dict, list[dict]]:
+    headlines: list[dict] = []
     capex_yoy_pct: float | None = None
 
     rows = (
@@ -263,14 +271,14 @@ async def _hyperscaler_raw(db, recent_signals: list[Signal]) -> tuple[dict, list
         if prior:
             prior_total = float(prior.value)
             capex_yoy_pct = (latest_total - prior_total) / prior_total * 100 if prior_total else 0
-            headlines.append(
+            headlines.append(_headline(
                 f"Q{(latest.ts.month - 1) // 3 + 1} {latest.ts.year} hyperscaler capex "
                 f"${latest_total/1000:.1f}B, {capex_yoy_pct:+.0f}% YoY"
-            )
+            ))
         else:
-            headlines.append(f"Latest aggregate capex ${latest_total/1000:.1f}B (no YoY comparable yet)")
+            headlines.append(_headline(f"Latest aggregate capex ${latest_total/1000:.1f}B (no YoY comparable yet)"))
     else:
-        headlines.append("Capex tracking pending")
+        headlines.append(_headline("Capex tracking pending"))
 
     ticker_rows = (
         await db.execute(
@@ -290,14 +298,14 @@ async def _hyperscaler_raw(db, recent_signals: list[Signal]) -> tuple[dict, list
             f"{t} ${v/1000:.1f}B"
             for t, (_, v) in sorted(latest_by_tkr.items(), key=lambda x: -x[1][1])[:4]
         )
-        headlines.append(bits)
+        headlines.append(_headline(bits))
 
     sig_sum = sum(_signal_score(s.payload, DIMENSION_TAGS["hyperscaler"]) for s in recent_signals)
     return {"capex_yoy_pct": capex_yoy_pct, "signal_sum": sig_sum}, headlines
 
 
-async def _enterprise_roi_raw(db, recent_signals: list[Signal]) -> tuple[dict, list[str]]:
-    headlines: list[str] = []
+async def _enterprise_roi_raw(db, recent_signals: list[Signal]) -> tuple[dict, list[dict]]:
+    headlines: list[dict] = []
     roi_pct: float | None = None
 
     rows = (
@@ -315,13 +323,13 @@ async def _enterprise_roi_raw(db, recent_signals: list[Signal]) -> tuple[dict, l
         source = (meta.get("source") or "").split("—")[0].strip() or "survey"
         date_str = meta.get("date") or latest.ts.date().isoformat()
         if sample:
-            headlines.append(f"{roi_pct:.0f}% report measurable ROI · n={sample} ({date_str}, {source})")
+            headlines.append(_headline(f"{roi_pct:.0f}% report measurable ROI · n={sample} ({date_str}, {source})"))
         else:
-            headlines.append(f"{roi_pct:.0f}% report measurable ROI ({date_str}, {source})")
+            headlines.append(_headline(f"{roi_pct:.0f}% report measurable ROI ({date_str}, {source})"))
         if len(rows) >= 2:
             delta = roi_pct - float(rows[1].value)
             if abs(delta) >= 1:
-                headlines.append(f"vs prior survey: {delta:+.0f} pts")
+                headlines.append(_headline(f"vs prior survey: {delta:+.0f} pts"))
 
     sig_sum = sum(_signal_score(s.payload, DIMENSION_TAGS["enterprise_roi"]) for s in recent_signals)
     return {"roi_pct": roi_pct, "signal_sum": sig_sum}, headlines
@@ -387,7 +395,7 @@ _SCORERS = {
 
 # ─── Orchestration ─────────────────────────────────────────────────────────────────
 
-async def collect_all_raws() -> tuple[dict[str, dict], dict[str, list[str]]]:
+async def collect_all_raws() -> tuple[dict[str, dict], dict[str, list[dict]]]:
     """Compute all dimensions' raw inputs (no scoring). Used both by compute_scores() and
     by the baselines snapshot endpoint."""
     # "Recent" means the underlying article was published (or first fetched, when no
@@ -406,7 +414,7 @@ async def collect_all_raws() -> tuple[dict[str, dict], dict[str, list[str]]]:
         ).scalars().all()
 
         raws: dict[str, dict] = {}
-        heads: dict[str, list[str]] = {}
+        heads: dict[str, list[dict]] = {}
         raws["capability"], heads["capability"] = await _capability_raw(recent_signals)
         raws["recursive_ai"], heads["recursive_ai"] = await _recursive_ai_raw(recent_signals)
         raws["infrastructure"], heads["infrastructure"] = await _infrastructure_raw(db, recent_signals)

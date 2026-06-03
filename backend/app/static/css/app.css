@@ -319,6 +319,15 @@ code, pre {
 }
 .dim-table .dim-headlines .head-item { display: block; padding: 1px 0; }
 .dim-table .dim-headlines .head-item::before { content: '· '; color: var(--fg-caption); }
+/* Headline links (signal-derived) match the muted headline text but carry a small blue ↗
+   so it's obvious at a glance which headlines open an article — metric-derived headlines
+   (capex/silicon/ROI/price) have no source article and stay plain text, no marker. */
+.dim-table .dim-headlines .head-item a.head-link,
+.aside-head a.head-link { color: inherit; }
+.dim-table .dim-headlines .head-item a.head-link::after,
+.aside-head a.head-link::after { content: ' ↗'; color: var(--blue); font-size: 0.85em; }
+.dim-table .dim-headlines .head-item a.head-link:hover,
+.aside-head a.head-link:hover { color: var(--fg1); text-decoration: underline; }
 
 .dim-table tbody tr.selected { background: rgba(137,180,250,0.08); }
 .dim-table tbody tr.selected td { color: var(--fg2); }

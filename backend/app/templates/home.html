@@ -92,6 +92,13 @@ function signalsForDim(items, dim){
   });
 }
 
+/* Hidden hover marker (vertical guide + dot) injected into every drawn sparkline.
+   wireSparklines() moves it to the nearest point and shows the score+date tooltip. */
+function sparkCursor(h) {
+  return `<line class="spark-cur-line" x1="0" y1="0" x2="0" y2="${h}" stroke="var(--blue)" stroke-width="0.75" opacity="0"/>`
+       + `<circle class="spark-cur-dot" r="2.5" fill="var(--blue)" opacity="0"/>`;
+}
+
 function sparklineSVG(points, width=120, height=28) {
   const w = width, h = height;
   const padY = h * 0.15;
@@ -105,18 +112,64 @@ function sparklineSVG(points, width=120, height=28) {
   const xy = points.map((p, i) => {
     const x = points.length > 1 ? (i / (points.length - 1)) * (w-2) + 1 : w / 2;
     const y = padY + (1 - (p.value - min) / range) * usableH;
-    return { x, y };
+    return { x: +x.toFixed(1), y: +y.toFixed(1), v: p.value, d: p.day };
   });
+  // Embed drawn geometry (+ score & day) so hover-mapping lands on the rendered line.
+  const data = `data-pts='${JSON.stringify(xy)}'`;
   if (points.length < MIN_DAYS_FOR_LINE) {
-    const dots = xy.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="currentColor"/>`).join('');
-    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${dots}<text x="${w-2}" y="${h-2}" text-anchor="end" fill="#6c7086" font-size="9" font-family="JetBrains Mono, monospace">${points.length}d</text></svg>`;
+    const dots = xy.map(p => `<circle cx="${p.x}" cy="${p.y}" r="2" fill="currentColor"/>`).join('');
+    return `<svg class="spark" ${data} width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${dots}<text x="${w-2}" y="${h-2}" text-anchor="end" fill="#6c7086" font-size="9" font-family="JetBrains Mono, monospace">${points.length}d</text>${sparkCursor(h)}</svg>`;
   }
-  const path = xy.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const path = xy.map(p => `${p.x},${p.y}`).join(' ');
   const last = xy[xy.length - 1];
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  return `<svg class="spark" ${data} width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
     <polyline points="${path}" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>
-    <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="2" fill="currentColor"/>
+    <circle cx="${last.x}" cy="${last.y}" r="2" fill="currentColor"/>
+    ${sparkCursor(h)}
   </svg>`;
+}
+
+/* Single shared tooltip; nearest-point hover handling reattached after every render
+   (renderAll replaces the SVGs). Reads each SVG's own viewBox width so the table's
+   140-wide trend, the 220 headline, and the 360 sidebar sparkline all map correctly. */
+let _sparkTip = null;
+function sparkTip() {
+  if (!_sparkTip) {
+    _sparkTip = document.createElement('div');
+    _sparkTip.className = 'spark-tip';
+    document.body.appendChild(_sparkTip);
+  }
+  return _sparkTip;
+}
+function wireSparklines() {
+  const tip = sparkTip();
+  document.querySelectorAll('svg.spark').forEach(svg => {
+    let pts;
+    try { pts = JSON.parse(svg.getAttribute('data-pts')); } catch (e) { return; }
+    if (!pts || !pts.length) return;
+    const vbW = (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width)
+              || parseFloat(svg.getAttribute('width')) || 140;
+    const line = svg.querySelector('.spark-cur-line');
+    const dot  = svg.querySelector('.spark-cur-dot');
+    svg.addEventListener('mousemove', (e) => {
+      const rect = svg.getBoundingClientRect();
+      // Map cursor px → viewBox units (rendered width may differ from the viewBox).
+      const vbX = (e.clientX - rect.left) / rect.width * vbW;
+      let best = pts[0], bd = Math.abs(pts[0].x - vbX);
+      for (const p of pts) { const dd = Math.abs(p.x - vbX); if (dd < bd) { bd = dd; best = p; } }
+      if (line) { line.setAttribute('x1', best.x); line.setAttribute('x2', best.x); line.setAttribute('opacity', '0.45'); }
+      if (dot)  { dot.setAttribute('cx', best.x); dot.setAttribute('cy', best.y); dot.setAttribute('opacity', '1'); }
+      tip.innerHTML = `<b>${best.v.toFixed(1)}</b><span>${best.d}</span>`;
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX + 14) + 'px';
+      tip.style.top  = (e.clientY - 12) + 'px';
+    });
+    svg.addEventListener('mouseleave', () => {
+      if (line) line.setAttribute('opacity', '0');
+      if (dot)  dot.setAttribute('opacity', '0');
+      tip.style.display = 'none';
+    });
+  });
 }
 
 function deltaSpan(d) {
@@ -169,6 +222,15 @@ function fmtRaw(dim, raw){
   return parts.join('') || '—';
 }
 
+/* Headlines arrive as {text, raw_item_id}. Signal-derived ones (raw_item_id set) link to
+   the article via /signal/{id} (which carries the "source ↗" outbound link); metric-derived
+   ones (silicon/capex/ROI/price/GW) render as plain text. Tolerates a bare string too. */
+function headlineInner(h){
+  const o = (h && typeof h === 'object') ? h : { text: h, raw_item_id: null };
+  const text = o.text || '';
+  return o.raw_item_id ? `<a class="head-link" href="/signal/${o.raw_item_id}">${text}</a>` : text;
+}
+
 function renderSidebar(){
   const aside = document.getElementById('dim-aside');
   const dim = STATE.selectedDim;
@@ -189,7 +251,7 @@ function renderSidebar(){
     </li>`).join('') : `<li class="empty">no 7d signals tagged for ${d.label}</li>`;
 
   const headlineList = headlines.length
-    ? headlines.map(h => `<div class="aside-head">· ${h}</div>`).join('')
+    ? headlines.map(h => `<div class="aside-head">· ${headlineInner(h)}</div>`).join('')
     : `<div class="aside-head" style="color:var(--fg-caption);">no recent headlines</div>`;
 
   document.getElementById('dim-aside-inner').innerHTML = `
@@ -234,7 +296,7 @@ function renderDimTable(){
     if (!d) continue;
     const cls = dimVerdictClass(d.score);
     const heads = (d.headlines || []).slice(0, 3)
-      .map(h => `<span class="head-item">${h}</span>`)
+      .map(h => `<span class="head-item">${headlineInner(h)}</span>`)
       .join('') || `<span class="head-item" style="color:var(--fg-caption);">no recent headlines</span>`;
     const tr = document.createElement('tr');
     tr.dataset.dim = dim;
@@ -450,6 +512,7 @@ function renderAll(){
   renderHeatmap();
   renderWhatChanged();
   renderSidebar();
+  wireSparklines();  // reattach hover handlers — the renders above replaced the SVGs
 }
 
 async function load() {
