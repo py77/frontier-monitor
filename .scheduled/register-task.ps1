@@ -4,7 +4,8 @@
 # Usage (from project root):
 #   pwsh -File .\.scheduled\register-task.ps1
 #
-# Default: daily at 14:00 local time. Override the trigger below to change.
+# Default: twice weekly, Monday & Thursday at 14:00 local time.
+# To change days/cadence, edit the -DaysOfWeek list (or swap to -Daily) on the trigger below.
 
 $projectDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $scriptPath = Join-Path $PSScriptRoot 'daily-refresh.ps1'
@@ -14,7 +15,7 @@ $action = New-ScheduledTaskAction `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" `
     -WorkingDirectory $projectDir
 
-$trigger = New-ScheduledTaskTrigger -Daily -At '14:00'
+$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday, Thursday -At '14:00'
 
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
@@ -35,10 +36,10 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
-    -Description 'Daily Anthropic-signal /refresh for the Frontier Monitor dashboard.' `
+    -Description 'Twice-weekly (Mon & Thu) Anthropic-signal /refresh for the Frontier Monitor dashboard.' `
     -Force | Out-Null
 
-Write-Host "Registered scheduled task 'frontier-refresh' (daily at 14:00 local)."
+Write-Host "Registered scheduled task 'frontier-refresh' (Mon & Thu at 14:00 local)."
 Write-Host "Next run: $((Get-ScheduledTaskInfo -TaskName 'frontier-refresh').NextRunTime)"
 Write-Host "Inspect via: Get-ScheduledTask -TaskName 'frontier-refresh' | Get-ScheduledTaskInfo"
 Write-Host "Manually trigger: Start-ScheduledTask -TaskName 'frontier-refresh'"

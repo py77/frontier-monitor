@@ -114,7 +114,7 @@ backend/app/
   settings.local.json           Bash allowlist for headless `claude -p "/refresh"`
 .scheduled/
   daily-refresh.ps1             Windows Task Scheduler runner — invokes `claude -p "/refresh"` headless
-  register-task.ps1             (Re-)registers the `frontier-refresh` task; daily 14:00 local
+  register-task.ps1             (Re-)registers the `frontier-refresh` task; Mon & Thu 14:00 local
 config/
   hyperscaler_capex.json        Curated quarterly capex per ticker (8-K cash flow)
   merchant_ai_silicon.json      NVDA/AMD/AVGO segment revenue per quarter
@@ -165,9 +165,11 @@ Headlines additionally filter by `Signal.pillar == dim` (the analyst-assigned pr
 
 `/refresh` step 5 writes a short narrative verdict — the prose answer to *"are we accelerating faster than consensus?"* — and POSTs it to `/api/digests` under the reserved `period="verdict"`, reusing the `digests` table rather than a new model. `/api/scoreboard` attaches the latest one as `analyst_verdict`; `home.html` renders it full-width above the dimensions table (markdown via a tiny client-side `mdToHtml`). `GET /api/digests/latest` **excludes** `period="verdict"` by default so the daily `/memo` stays separate — pass `?period=verdict` to fetch it. Same anti-fabrication rule as signals: every number traces to a `citation` from that run or a `/api/scoreboard` value. It overwrites every run (latest wins) and fires even when zero items were pending, so the dashboard never goes stale.
 
-### Unattended daily /refresh
+### Unattended /refresh (twice weekly)
 
-Windows Task Scheduler runs `claude -p "/refresh"` daily at 14:00 local — registered as `frontier-refresh`. No Claude Code session needed; just leave the machine on (or asleep — `StartWhenAvailable` fires on wake).
+Windows Task Scheduler runs `claude -p "/refresh"` **twice weekly — Monday & Thursday at 14:00 local** — registered as `frontier-refresh`. No Claude Code session needed; just leave the machine on (or asleep — `StartWhenAvailable` fires on wake). Edit `-DaysOfWeek` in `register-task.ps1` and re-register to change the cadence.
+
+**Gotcha — the readiness probe must use `127.0.0.1`, not `localhost`.** The task runs under Windows PowerShell 5.1, whose `Invoke-RestMethod` resolves `localhost` to IPv6 `::1` with no IPv4 fallback, while Docker publishes the port on IPv4 `127.0.0.1` only. With `localhost` the probe in `daily-refresh.ps1` silently times out for 60s and aborts before Claude runs — the task shows `LastTaskResult=1` and `refresh.log` reads "backend did not respond after 60s". (This dead-failed every run May 31–Jun 7 2026 before being fixed; May 30 was the last green run.)
 
 ```powershell
 # Inspect / trigger / pause

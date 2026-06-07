@@ -34,7 +34,10 @@ try {
 $ready = $false
 for ($i = 0; $i -lt 60; $i++) {
     try {
-        Invoke-RestMethod 'http://localhost:8765/api/sources' -TimeoutSec 2 | Out-Null
+        # Use 127.0.0.1, NOT localhost: the scheduled task runs under Windows PowerShell 5.1,
+        # whose Invoke-RestMethod resolves localhost to IPv6 ::1 with no IPv4 fallback, while
+        # Docker publishes the port on IPv4 127.0.0.1 only. localhost here times out for 60s.
+        Invoke-RestMethod 'http://127.0.0.1:8765/api/sources' -TimeoutSec 2 | Out-Null
         $ready = $true; break
     } catch { Start-Sleep -Seconds 1 }
 }
