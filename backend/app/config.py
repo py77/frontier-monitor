@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # systematic retrieval); computeprices_api_key only raises the free rate limit.
     gpu_raw_dir: str = "/data/gpu_raw"
     vast_api_key: str = ""
+    # TensorDock v2 requires an API key — the legacy no-auth v0 marketplace host was
+    # decommissioned in 2026 (404). Same opt-in posture as vast_api_key.
+    tensordock_api_key: str = ""
     computeprices_api_key: str = ""
 
     model_config = {"env_file": ".env", "extra": "ignore"}

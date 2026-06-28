@@ -11,7 +11,9 @@
     {"period": "2024Q3", "revenue_usd_m": 30771, "fiscal_label": "Q3 FY25", "source": "NVDA_10-Q_Q4-2025_20251119 prior-year column"},
     {"period": "2025Q1", "revenue_usd_m": 39112, "fiscal_label": "Q1 FY26", "note": "derived = H1 FY26 (80208) − Q2 FY26 (41096)", "source": "NVDA_10-Q_Q3-2025_20250827 segment revenue table"},
     {"period": "2025Q2", "revenue_usd_m": 41096, "fiscal_label": "Q2 FY26", "source": "NVDA_10-Q_Q3-2025_20250827 segment revenue table"},
-    {"period": "2025Q3", "revenue_usd_m": 51215, "fiscal_label": "Q3 FY26", "source": "NVDA_10-Q_Q4-2025_20251119 segment revenue table"}
+    {"period": "2025Q3", "revenue_usd_m": 51215, "fiscal_label": "Q3 FY26", "source": "NVDA_10-Q_Q4-2025_20251119 segment revenue table"},
+    {"period": "2025Q4", "revenue_usd_m": 62300, "fiscal_label": "Q4 FY26", "note": "Data Center segment revenue; +75% YoY, +22% Q/Q. Quarter ended Jan 25 2026 (Nov 2025–Jan 2026 ≈ calendar 2025Q4).", "source": "NVDA_8-K_Q4FY2026_20260225_PR ('record quarterly Data Center revenue of $62.3 billion, up 22% from Q3 and up 75% from a year ago')"},
+    {"period": "2026Q1", "revenue_usd_m": 75200, "fiscal_label": "Q1 FY27", "note": "Data Center segment revenue; +92% YoY, +21% Q/Q. Quarter ended Apr 26 2026 (Feb–Apr 2026 ≈ calendar 2026Q1).", "source": "NVDA_8-K_Q1FY2027_20260520_PR ('record Data Center revenue of $75.2 billion, up 92% from a year ago')"}
   ],
   "AMD": [
     {"period": "2024Q3", "revenue_usd_m": 3549, "fiscal_label": "Q3 FY24", "source": "AMD_10-Q_Q3-2025_20251105 prior-year column (segment table)"},

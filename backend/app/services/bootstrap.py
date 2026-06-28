@@ -101,12 +101,15 @@ DEFAULT_SOURCES: list[dict] = [
         "url": "https://api.clore.ai/v1/marketplace",
         "enabled": True,
     },
+    # TensorDock decommissioned its no-auth v0 marketplace host in 2026 (404); the v2 API is
+    # key-gated. Ships DISABLED like Vast — set TENSORDOCK_API_KEY in .env, then enable via
+    # POST /api/sources/gpu_tensordock/toggle. Collector: _collect_tensordock_v2.
     {
         "id": "gpu_tensordock",
         "pillar": "infrastructure",
         "kind": "gpu_rental",
-        "url": "https://marketplace.tensordock.com/api/v0/client/deploy/hostnodes",
-        "enabled": True,
+        "url": "https://dashboard.tensordock.com/api/v2/hostnodes",
+        "enabled": False,
     },
     {
         "id": "gpu_runpod",

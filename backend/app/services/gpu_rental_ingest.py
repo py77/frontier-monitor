@@ -243,29 +243,84 @@ async def _collect_clore(url: str) -> tuple[dict[str, ModelAgg], dict[str, int],
     return per_model, unmapped, raw
 
 
-async def _collect_tensordock(url: str) -> tuple[dict[str, ModelAgg], dict[str, int], object]:
-    """TensorDock v0 hostnodes — per-host marketplace, no auth. specs.gpu[model_key] =
-    {price ($/hr/GPU, already correct unit), amount (free units), vram}. model_key like
-    'geforcertx4090-pcie-24gb'. amount → available (no capacity total → no occupancy)."""
-    async with httpx.AsyncClient(timeout=30.0, headers=_UA) as c:
+def _first(d: dict, *keys):
+    """First non-None value among the candidate keys (tolerates schema field-name variance)."""
+    for k in keys:
+        v = d.get(k)
+        if v is not None:
+            return v
+    return None
+
+
+async def _collect_tensordock_v2(url: str) -> tuple[dict[str, ModelAgg], dict[str, int], object]:
+    """TensorDock v2 hostnodes — AUTHENTICATED (Bearer API key). The legacy no-auth host
+    marketplace.tensordock.com/api/v0/client/deploy/hostnodes was decommissioned in 2026 (404),
+    so this source now requires a key (TensorDock Developer Settings) the same opt-in way as
+    Vast: set TENSORDOCK_API_KEY in .env, then enable via POST /api/sources/gpu_tensordock/toggle.
+
+    Envelope is {"data": {...}} (confirmed on the open /api/v2/locations endpoint). The exact
+    per-hostnode GPU/price field names are PROVISIONAL — the v2 hostnodes payload is auth-gated
+    and undocumented publicly, so the parser tries the plausible names and, if no price is
+    extracted, logs a sample node (the raw payload is also archived) so the mapping can be
+    finalized against a real authed response. Verify field names on first authed poll.
+    """
+    if not settings.tensordock_api_key:
+        raise RuntimeError(
+            "TENSORDOCK_API_KEY not set — TensorDock v2 requires an API key "
+            "(legacy no-auth v0 marketplace API was decommissioned 2026)"
+        )
+    headers = {**_UA, "Authorization": f"Bearer {settings.tensordock_api_key}"}
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=headers) as c:
         resp = await c.get(url)
         resp.raise_for_status()
         data = resp.json()
+
+    nodes = (data.get("data") or {}).get("hostnodes", data.get("hostnodes"))
+    # v2 may return a list of nodes or a dict keyed by id — normalize to a list of node dicts.
+    if isinstance(nodes, dict):
+        nodes = list(nodes.values())
+    elif not isinstance(nodes, list):
+        nodes = []
+
     per_model: dict[str, ModelAgg] = {}
     unmapped: dict[str, int] = {}
-    for h in (data.get("hostnodes") or {}).values():
+    parsed_any = False
+    for h in nodes:
+        if not isinstance(h, dict):
+            continue
         if not (h.get("status") or {}).get("online", True):
             continue
-        for mkey, info in (h.get("specs", {}).get("gpu") or {}).items():
+        gpus = (h.get("specs") or {}).get("gpu", h.get("gpu"))
+        # gpu spec is either a dict {model_key: {...}} (v0 carryover) or a list of gpu dicts.
+        if isinstance(gpus, dict):
+            items = list(gpus.items())
+        elif isinstance(gpus, list):
+            items = [(_first(g, "model", "name", "type") or "", g) for g in gpus if isinstance(g, dict)]
+        else:
+            items = []
+        for mkey, info in items:
+            if not isinstance(info, dict):
+                continue
+            mkey = str(mkey)
             parts = mkey.split("-")
-            label, vram = parts[0], info.get("vram")
+            label = parts[0] if parts and parts[0] else (_first(info, "model", "name") or "")
+            vram = _parse_vram(_first(info, "vram", "vram_gb", "gpu_vram"))
             iface = "pcie" if info.get("pcie") else next((p for p in parts if p in _IFACE_TOKENS), None)
             key = canonicalize(label, vram, iface)
             if key is None:
                 unmapped[mkey] = unmapped.get(mkey, 0) + 1
                 continue
+            price = _first(info, "price", "price_per_hour", "pricePerHour", "hourly_price", "cost")
+            amount = _first(info, "amount", "available", "count", "available_count")
             agg = per_model.setdefault(key, ModelAgg())
-            agg.add(ondemand=info.get("price"), available=info.get("amount") or 0, providers=1)
+            agg.add(ondemand=price, available=(int(amount) if amount is not None else 0), providers=1)
+            if price:
+                parsed_any = True
+    if nodes and not parsed_any:
+        logger.warning(
+            "gpu_tensordock v2: %d nodes returned but no price parsed — verify field mapping. "
+            "Sample node: %s", len(nodes), json.dumps(nodes[0], default=str)[:800],
+        )
     return per_model, unmapped, data
 
 
@@ -441,7 +496,7 @@ async def _collect_vast(url: str) -> tuple[dict[str, ModelAgg], dict[str, int], 
 COLLECTORS = {
     "gpu_akash": _collect_akash,
     "gpu_clore": _collect_clore,
-    "gpu_tensordock": _collect_tensordock,
+    "gpu_tensordock": _collect_tensordock_v2,
     "gpu_runpod": _collect_runpod,
     "gpu_computeprices": _collect_computeprices,
     "gpu_azure": _collect_azure,

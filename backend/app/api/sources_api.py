@@ -23,7 +23,6 @@ async def list_sources(db: AsyncSession = Depends(get_db)) -> list[dict]:
     now = datetime.now(timezone.utc)
     out = []
     for s in rows:
-        stale = bool(s.last_fetched_at and (now - s.last_fetched_at).total_seconds() > 48 * 3600)
         out.append({
             "id": s.id,
             "pillar": s.pillar,
@@ -32,7 +31,8 @@ async def list_sources(db: AsyncSession = Depends(get_db)) -> list[dict]:
             "enabled": s.enabled,
             "last_fetched_at": s.last_fetched_at.isoformat() if s.last_fetched_at else None,
             "item_count": counts.get(s.id, 0),
-            "stale": stale,
+            "stale": s.is_stale(now),
+            "stale_threshold_hours": s.stale_threshold_hours,
         })
     return out
 

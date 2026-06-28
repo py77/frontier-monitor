@@ -66,6 +66,7 @@ async def sources_page(request: Request, db: AsyncSession = Depends(get_db)):
             "kind": s.kind,
             "enabled": s.enabled,
             "last_fetched_at": s.last_fetched_at,
-            "stale": bool(s.last_fetched_at and (now - s.last_fetched_at).total_seconds() > 48 * 3600),
+            "stale": s.is_stale(now),
+            "stale_threshold_hours": s.stale_threshold_hours,
         })
     return templates.TemplateResponse("sources.html", {"request": request, "sources": sources})
