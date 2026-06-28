@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import RawItem, Source
+from app.services.data_recency import recency_status
 
 router = APIRouter()
 
@@ -23,6 +24,7 @@ async def list_sources(db: AsyncSession = Depends(get_db)) -> list[dict]:
     now = datetime.now(timezone.utc)
     out = []
     for s in rows:
+        rec = recency_status(s.kind, now)
         out.append({
             "id": s.id,
             "pillar": s.pillar,
@@ -33,6 +35,12 @@ async def list_sources(db: AsyncSession = Depends(get_db)) -> list[dict]:
             "item_count": counts.get(s.id, 0),
             "stale": s.is_stale(now),
             "stale_threshold_hours": s.stale_threshold_hours,
+            # Data-recency (do we hold the latest officially-reported quarter?) — distinct
+            # from `stale` (did the loader run recently). None for non-quarterly sources.
+            "behind": bool(rec and rec["behind"]),
+            "expected_period": rec["expected"] if rec else None,
+            "held_period": rec["held"] if rec else None,
+            "missing_tickers": rec["missing"] if rec else [],
         })
     return out
 

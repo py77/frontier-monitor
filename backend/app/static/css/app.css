@@ -550,6 +550,7 @@ table.sources code { background: transparent; color: var(--fg2); padding: 0; }
 }
 .badge.ok    { color: var(--pos); border: 1px solid rgba(166,227,161,0.30); }
 .badge.warn  { color: var(--warn); border: 1px solid rgba(249,226,175,0.30); }
+.badge.bad   { color: var(--neg); border: 1px solid rgba(243,139,168,0.30); }
 .badge.muted { color: var(--fg-caption); border: 1px solid var(--hairline); }
 
 /* ============================================================

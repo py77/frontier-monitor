@@ -16,6 +16,7 @@
       <td>{% if s.last_fetched_at %}{{ s.last_fetched_at.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}—{% endif %}</td>
       <td>
         {% if not s.enabled %}<span class="badge muted">off</span>
+        {% elif s.behind %}<span class="badge bad" title="latest reported quarter is {{ s.expected_period }}; missing: {{ s.missing_tickers|join(', ') }}">behind · {{ s.expected_period }}</span>
         {% elif s.stale %}<span class="badge warn">stale &gt;{% if s.stale_threshold_hours >= 72 %}{{ s.stale_threshold_hours // 24 }}d{% else %}{{ s.stale_threshold_hours }}h{% endif %}</span>
         {% elif s.last_fetched_at %}<span class="badge ok">fresh</span>
         {% else %}<span class="badge muted">never</span>{% endif %}

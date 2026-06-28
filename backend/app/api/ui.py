@@ -56,10 +56,13 @@ async def signal_detail(raw_item_id: str, request: Request, db: AsyncSession = D
 @router.get("/sources", response_class=HTMLResponse)
 async def sources_page(request: Request, db: AsyncSession = Depends(get_db)):
     from datetime import datetime, timezone
+
+    from app.services.data_recency import recency_status
     rows = (await db.execute(select(Source).order_by(Source.pillar, Source.id))).scalars().all()
     now = datetime.now(timezone.utc)
     sources = []
     for s in rows:
+        rec = recency_status(s.kind, now)
         sources.append({
             "id": s.id,
             "pillar": s.pillar,
@@ -68,5 +71,8 @@ async def sources_page(request: Request, db: AsyncSession = Depends(get_db)):
             "last_fetched_at": s.last_fetched_at,
             "stale": s.is_stale(now),
             "stale_threshold_hours": s.stale_threshold_hours,
+            "behind": bool(rec and rec["behind"]),
+            "expected_period": rec["expected"] if rec else None,
+            "missing_tickers": rec["missing"] if rec else [],
         })
     return templates.TemplateResponse("sources.html", {"request": request, "sources": sources})
